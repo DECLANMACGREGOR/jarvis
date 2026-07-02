@@ -153,15 +153,17 @@ def _matches(reply: str, phrases: tuple[str, ...]) -> bool:
 
 
 def _confirm(spoken_desc: str, full_desc: str) -> bool:
-    """Speak a permission request, listen for the answer. Deny by default."""
+    """Speak a permission request, listen for a PTT answer. Deny by default."""
     print(f"\n[JARVIS] PERMISSION REQUEST: {full_desc}")
     try:
         import voice
         import listener
         import stt
-        voice.speak(f"Permission required, sir. {spoken_desc}. Say yes to confirm, or no to cancel.")
-        audio = listener.record_until_silence()
-        reply = stt.transcribe(audio).lower()
+        voice.speak(f"Permission required, sir. {spoken_desc}. Hold the push to talk key and say yes or no.")
+        if not listener.wait_for_ptt(timeout=15):
+            print("[JARVIS] No answer within 15 seconds — denying by default.")
+            return False
+        reply = stt.transcribe(listener.record_while_held()).lower()
         print(f"[JARVIS] Heard: {reply!r}")
         return _matches(reply, _APPROVE_WORDS) and not _matches(reply, _DENY_WORDS)
     except Exception as e:

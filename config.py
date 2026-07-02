@@ -15,12 +15,8 @@ BASE_MODEL = "claude-sonnet-4-6"
 SMART_MODEL = "claude-opus-4-8"
 MAX_TOOL_ROUNDS = 8        # safety cap on tool-use loops per turn
 
-# Clap detection tuning
-CLAP_THRESHOLD = 0.008     # amplitude threshold (0.0–1.0); lower = more sensitive
-CLAP_SPIKE_RATIO = 6.0     # clap must be this many times louder than background noise
-CLAP_WINDOW_MIN = 0.15     # min seconds between two claps
-CLAP_WINDOW_MAX = 1.2      # max seconds between two claps
-SILENCE_TIMEOUT = 1.5      # seconds of silence before ending recording
+# Push-to-talk
+PTT_KEY = "f8"             # hold this key to speak, release to send
 
 # Whisper STT
 WHISPER_MODEL = "base"     # options: tiny, base, small, medium (larger = more accurate, slower)

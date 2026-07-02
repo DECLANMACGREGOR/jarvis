@@ -3,7 +3,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from config import ANTHROPIC_API_KEY, ELEVENLABS_API_KEY
+from config import ANTHROPIC_API_KEY, ELEVENLABS_API_KEY, PTT_KEY
 import listener
 import stt
 import brain
@@ -35,7 +35,7 @@ def main():
     print("=" * 50)
     if mem.get("summary"):
         print(f"  Memory loaded: {mem['turn_count']} prior turns")
-    print("  Double-clap to activate.\n")
+    print(f"  Hold [{PTT_KEY.upper()}] to speak.\n")
 
     # Start HUD window
     hud.start()
@@ -43,20 +43,21 @@ def main():
 
     # Warm up Whisper before first use
     stt._get_model()  # type: ignore[attr-defined]
-    hud.update(status="LISTENING")
+    hud.update(status="STANDBY")
 
     while True:
         try:
-            hud.update(status="LISTENING", command="", response="")
-            listener.wait_for_clap()
+            hud.update(status="STANDBY", command="", response="")
+            print(f"\n[JARVIS] Standby — hold [{PTT_KEY.upper()}] to speak.")
+            listener.wait_for_ptt()
 
-            hud.update(status="ACTIVATED", response="Hello, sir. How can I assist you?")
-            greeting = "Hello, sir. JARVIS is online. How can I assist you?"
-            print(f"[JARVIS] {greeting}")
-            voice.speak(greeting)
+            hud.update(status="LISTENING")
+            print("[JARVIS] Listening — release the key when finished.")
+            audio = listener.record_while_held()
 
-            print("[JARVIS] Activated — listening for your command.")
-            audio = listener.record_until_silence()
+            if audio.size < 8000:  # < 0.5s of audio — accidental tap
+                print("[JARVIS] Too short — hold the key while you speak.")
+                continue
 
             text = stt.transcribe(audio)
             if not text:

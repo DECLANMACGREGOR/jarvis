@@ -2,6 +2,7 @@ import io
 import threading
 import queue
 import re
+import time
 import pygame
 from elevenlabs.client import ElevenLabs
 from elevenlabs import VoiceSettings
@@ -27,15 +28,33 @@ def _ensure_pygame() -> None:
 
 def _play_audio_bytes(data: bytes) -> None:
     _ensure_pygame()
-    buf = io.BytesIO(data)
-    pygame.mixer.music.load(buf, "mp3")
-    pygame.mixer.music.play()
-    while pygame.mixer.music.get_busy():
-        pygame.time.wait(50)
+    try:
+        buf = io.BytesIO(data)
+        pygame.mixer.music.load(buf, "mp3")
+        pygame.mixer.music.play()
+        deadline = time.monotonic() + 60  # safety: never wedge on stuck playback
+        while pygame.mixer.music.get_busy() and time.monotonic() < deadline:
+            pygame.time.wait(50)
+    except Exception as e:
+        print(f"[JARVIS] Playback error: {e}")
+        try:
+            pygame.mixer.music.stop()
+        except Exception:
+            pass
 
 
 def _split_sentences(text: str) -> list[str]:
-    return [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    raw = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
+    # Merge tiny fragments into their neighbor. Abbreviations like "9:41 P.M."
+    # split into shards like "M." — ElevenLabs produces garbled noise on
+    # near-empty inputs, so never send a chunk shorter than ~20 chars alone.
+    merged: list[str] = []
+    for s in raw:
+        if merged and (len(s) < 20 or len(merged[-1]) < 20):
+            merged[-1] = f"{merged[-1]} {s}"
+        else:
+            merged.append(s)
+    return merged
 
 
 def speak(text: str) -> None:

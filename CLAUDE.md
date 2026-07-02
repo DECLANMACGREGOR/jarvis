@@ -4,7 +4,7 @@
 A locally-running, privately-sourced JARVIS agent activated by a double-clap sound cue. Sounds, feels, and behaves like the JARVIS from Iron Man — calm, precise, dry wit, always useful.
 
 ## Stack
-- **AI**: Claude API (`claude-opus-4-7`) with prompt caching + auto-summarization
+- **AI**: Claude API with dynamic model routing — `claude-sonnet-4-6` for everyday turns, auto-escalates to `claude-opus-4-8` for heavy reasoning (coding, analysis, or say "think hard"). Prompt caching + auto-summarization.
 - **Wake word**: Double-clap detection via `sounddevice` (real-time amplitude transient detection)
 - **STT**: `faster-whisper` (local, offline, private)
 - **TTS**: ElevenLabs (`eleven_turbo_v2_5`, sentence-chunked streaming)

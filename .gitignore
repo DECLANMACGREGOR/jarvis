@@ -1,0 +1,9 @@
+# Secrets — never commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Runtime state (personal data, changes constantly)
+memory/

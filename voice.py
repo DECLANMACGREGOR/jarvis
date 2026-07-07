@@ -4,9 +4,12 @@ import queue
 import re
 import time
 import pygame
+import keyboard
 from elevenlabs.client import ElevenLabs
 from elevenlabs import VoiceSettings
-from config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
+from config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, PTT_KEY
+
+RESPONSE_DEADLINE_S = 90  # hard cap for speaking one full response, not per sentence
 
 _client: ElevenLabs | None = None
 _pygame_ready = False
@@ -26,15 +29,24 @@ def _ensure_pygame() -> None:
         _pygame_ready = True
 
 
-def _play_audio_bytes(data: bytes) -> None:
+def _play_audio_bytes(data: bytes, deadline: float, cancel: threading.Event) -> None:
     _ensure_pygame()
     try:
         buf = io.BytesIO(data)
         pygame.mixer.music.load(buf, "mp3")
         pygame.mixer.music.play()
-        deadline = time.monotonic() + 60  # safety: never wedge on stuck playback
         while pygame.mixer.music.get_busy() and time.monotonic() < deadline:
+            # Barge-in: pressing PTT while JARVIS speaks cuts it off immediately.
+            if keyboard.is_pressed(PTT_KEY):
+                cancel.set()
+                pygame.mixer.music.stop()
+                print("[JARVIS] — interrupted.")
+                return
             pygame.time.wait(50)
+        if time.monotonic() >= deadline:
+            cancel.set()
+            pygame.mixer.music.stop()
+            print("[JARVIS] Playback deadline reached — cutting response short.")
     except Exception as e:
         print(f"[JARVIS] Playback error: {e}")
         try:
@@ -54,20 +66,33 @@ def _split_sentences(text: str) -> list[str]:
             merged[-1] = f"{merged[-1]} {s}"
         else:
             merged.append(s)
+    # A lone shard like "M." has no neighbor to merge into — ElevenLabs garbles
+    # it, so skip TTS entirely (the text is already printed). Short-but-real
+    # lone sentences ("Yes, sir.") synthesize fine and pass through.
+    if len(merged) == 1 and len(merged[0]) < 4:
+        return []
     return merged
 
 
 def speak(text: str) -> None:
-    """Convert text to speech and play it. Speaks sentence-by-sentence for low latency."""
+    """Convert text to speech and play it. Speaks sentence-by-sentence for low latency.
+
+    Holding the PTT key at any point cuts JARVIS off (barge-in) and cancels
+    the remaining TTS fetches. One shared deadline caps the whole response.
+    """
     client = _get_client()
     sentences = _split_sentences(text)
     if not sentences:
         return
 
     audio_queue: queue.Queue[bytes | None] = queue.Queue()
+    cancel = threading.Event()
+    deadline = time.monotonic() + RESPONSE_DEADLINE_S
 
     def fetch_all():
         for sentence in sentences:
+            if cancel.is_set():
+                break  # user barged in — don't waste API calls on unheard audio
             try:
                 audio = client.text_to_speech.convert(
                     voice_id=ELEVENLABS_VOICE_ID,
@@ -94,6 +119,6 @@ def speak(text: str) -> None:
         chunk = audio_queue.get()
         if chunk is None:
             break
-        if not chunk:
-            continue  # a sentence failed to synthesize — skip it, keep going
-        _play_audio_bytes(chunk)
+        if not chunk or cancel.is_set():
+            continue  # failed sentence, or user cut us off — drain to sentinel
+        _play_audio_bytes(chunk, deadline, cancel)

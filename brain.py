@@ -50,13 +50,21 @@ def _summarize_history() -> None:
     """Ask Claude to summarize the conversation, then reset history."""
     if not _history:
         return
-    summary_resp = _client.messages.create(
-        model=BASE_MODEL,
-        max_tokens=512,
-        system="Summarize this conversation in 3-5 sentences, capturing key topics, decisions, and user preferences. Output ONLY the summary itself — no questions, no offers, no preamble.",
-        messages=[{"role": "user", "content": _history_as_text()}],
-    )
-    summary = summary_resp.content[0].text.strip()
+    try:
+        summary_resp = _client.messages.create(
+            model=BASE_MODEL,
+            max_tokens=512,
+            system="Summarize this conversation in 3-5 sentences, capturing key topics, decisions, and user preferences. Output ONLY the summary itself — no questions, no offers, no preamble.",
+            messages=[{"role": "user", "content": _history_as_text()}],
+        )
+    except Exception as e:
+        print(f"[JARVIS] Summarization failed ({type(e).__name__}: {e}) — keeping full history this cycle.")
+        return
+    parts = [b.text for b in summary_resp.content if getattr(b, "text", "")]
+    if not parts:
+        print("[JARVIS] Summarization returned no text — keeping full history this cycle.")
+        return
+    summary = " ".join(parts).strip()
     mem_module.write_summary(summary)
     _history.clear()
     _history.append({
@@ -86,10 +94,18 @@ def _pick_model(user_text: str) -> str:
     return BASE_MODEL
 
 
+_session_turns = 0  # in-session counter; the persisted turn_count is for display only
+
+
 def think(user_text: str) -> str:
     """Send user message to Claude, handle tool calls, return final text response."""
-    turn_count = mem_module.increment_turn()
-    if turn_count > 0 and turn_count % SUMMARIZE_EVERY == 0:
+    global _session_turns
+    mem_module.increment_turn()  # persisted counter feeds the HUD
+    _session_turns += 1
+    # Summarize based on THIS session's history length. The old check used the
+    # persisted global counter, which could fire on a fresh session's first turn
+    # (wasted call) or let history grow 19 turns deep before triggering.
+    if _session_turns % SUMMARIZE_EVERY == 0:
         _summarize_history()
 
     model = _pick_model(user_text)

@@ -127,6 +127,15 @@ def run_code(code: str, lang: str) -> str:
 
 
 def update_memory(fact: str) -> str:
+    # Not gated, but never silent: persistent memory feeds every future system
+    # prompt, so a web-injected fact must be impossible to save without the
+    # user hearing it happen.
+    print(f"[JARVIS] MEMORY WRITE: {fact}")
+    try:
+        import voice
+        voice.speak("Saving that to memory, sir.")
+    except Exception as e:
+        print(f"[JARVIS] Memory announce failed ({e}) — saving anyway.")
     mem_module.add_fact(fact)
     return f"Remembered: {fact}"
 
@@ -159,11 +168,17 @@ def _confirm(spoken_desc: str, full_desc: str) -> bool:
         import voice
         import listener
         import stt
+        import hud
+        hud.update(status="PERMISSION", response=full_desc)
         voice.speak(f"Permission required, sir. {spoken_desc}. Hold the push to talk key and say yes or no.")
         if not listener.wait_for_ptt(timeout=15):
             print("[JARVIS] No answer within 15 seconds — denying by default.")
             return False
-        reply = stt.transcribe(listener.record_while_held()).lower()
+        audio = listener.record_while_held()
+        if audio.size < 8000:  # accidental tap — too short to transcribe reliably
+            print("[JARVIS] Answer too short to hear — denying by default.")
+            return False
+        reply = stt.transcribe(audio).lower()
         print(f"[JARVIS] Heard: {reply!r}")
         return _matches(reply, _APPROVE_WORDS) and not _matches(reply, _DENY_WORDS)
     except Exception as e:
@@ -176,7 +191,10 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
         if tool_name == "run_code":
             lang = tool_input.get("lang", "python")
             code_preview = str(tool_input.get("code", ""))[:160]
-            spoken = f"I want to run a {lang} command"
+            # Speak the actual code, not just "a command" — the user must never
+            # approve blind. Collapse whitespace so TTS doesn't choke on newlines.
+            spoken_code = re.sub(r"\s+", " ", code_preview)[:80]
+            spoken = f"I want to run {lang} code that begins: {spoken_code}"
             full = f"run_code[{lang}]: {code_preview}"
         else:
             target = tool_input.get("target", "")

@@ -20,6 +20,7 @@ STATUS_COLORS = {
     "LISTENING":  CYAN,
     "ACTIVATED":  GREEN,
     "PROCESSING": ORANGE,
+    "PERMISSION": RED,
     "SPEAKING":   GREEN,
     "ERROR":      RED,
 }

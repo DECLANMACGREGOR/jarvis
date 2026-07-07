@@ -132,7 +132,12 @@ def think(user_text: str) -> str:
             text_parts = [b.text for b in assistant_content if hasattr(b, "text")]
             return " ".join(text_parts).strip()
 
-        return "I stopped after too many tool steps, sir. Try rephrasing or breaking the task down."
+        # Loop cap hit: history currently ends with a user-role tool_result block.
+        # We MUST append an assistant message here, or the next turn creates two
+        # consecutive user messages and the API rejects every call until restart.
+        fallback = "I stopped after too many tool steps, sir. Try rephrasing or breaking the task down."
+        _history.append({"role": "assistant", "content": fallback})
+        return fallback
     except Exception:
         # Roll history back to before this turn so one failure can't poison future calls
         del _history[start_len:]

@@ -57,7 +57,7 @@ TOOL_DEFINITIONS = [
 
 def web_search(query: str) -> str:
     try:
-        with DDGS() as ddgs:
+        with DDGS(timeout=10) as ddgs:  # a slow search must not stall the whole turn
             results = list(ddgs.text(query, max_results=5))
         if not results:
             return "No results found."

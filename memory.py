@@ -2,18 +2,38 @@ import json
 import os
 from config import MEMORY_FILE
 
+_DEFAULT = {"summary": "", "user_facts": [], "turn_count": 0}
+
 
 def load() -> dict:
     if not os.path.exists(MEMORY_FILE):
-        return {"summary": "", "user_facts": [], "turn_count": 0}
-    with open(MEMORY_FILE, "r") as f:
-        return json.load(f)
+        return dict(_DEFAULT, user_facts=[])
+    try:
+        with open(MEMORY_FILE, "r") as f:
+            mem = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        # A crash mid-write can truncate the file. Preserve the evidence,
+        # start fresh, keep JARVIS runnable instead of erroring every turn.
+        backup = MEMORY_FILE + ".corrupt"
+        try:
+            os.replace(MEMORY_FILE, backup)
+            print(f"[JARVIS] Memory file unreadable ({e}) — backed up to {backup}, starting fresh.")
+        except OSError:
+            print(f"[JARVIS] Memory file unreadable ({e}) — starting fresh.")
+        return dict(_DEFAULT, user_facts=[])
+    # Tolerate partial/hand-edited files
+    for key, default in _DEFAULT.items():
+        mem.setdefault(key, [] if isinstance(default, list) else default)
+    return mem
 
 
 def save(mem: dict) -> None:
     os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
-    with open(MEMORY_FILE, "w") as f:
+    # Atomic write: never leave a truncated file if we crash mid-dump.
+    tmp = MEMORY_FILE + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(mem, f, indent=2)
+    os.replace(tmp, MEMORY_FILE)
 
 
 def add_fact(fact: str) -> None:

@@ -3,8 +3,9 @@ import re
 import subprocess
 import sys
 import winreg
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 import memory as mem_module
+from config import VAULT_PATH
 
 TOOL_DEFINITIONS = [
     {
@@ -50,6 +51,51 @@ TOOL_DEFINITIONS = [
                 "fact": {"type": "string", "description": "The fact to remember about the user"}
             },
             "required": ["fact"],
+        },
+    },
+    {
+        "name": "list_vault_notes",
+        "description": "List note files inside the user's Obsidian vault, optionally under a subfolder. Read-only.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "subfolder": {"type": "string", "description": "Subfolder path relative to the vault root, e.g. 'Goals' or 'Courses/MATH285 Topics'. Empty for the vault root."}
+            },
+        },
+    },
+    {
+        "name": "read_vault_note",
+        "description": "Read the full text content of one note file in the user's Obsidian vault. Read-only.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Note path relative to the vault root, e.g. 'Goals/Snap Internship Prep Plan.md'"}
+            },
+            "required": ["path"],
+        },
+    },
+    {
+        "name": "search_vault",
+        "description": "Search across all note files in the user's Obsidian vault for a text string (case-insensitive). Read-only.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Text to search for across vault notes"}
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "write_vault_note",
+        "description": "Write or append content to a note file in the user's Obsidian vault. Requires spoken user confirmation before executing. Always check VAULT_INSTRUCTIONS.md conventions first if unsure of formatting.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Note path relative to the vault root, e.g. 'Goals/New Note.md'"},
+                "content": {"type": "string", "description": "Content to write"},
+                "mode": {"type": "string", "enum": ["overwrite", "append"], "description": "Whether to overwrite the file or append to it"},
+            },
+            "required": ["path", "content", "mode"],
         },
     },
 ]
@@ -140,10 +186,101 @@ def update_memory(fact: str) -> str:
     return f"Remembered: {fact}"
 
 
+# ── Obsidian vault tools — sandboxed to VAULT_PATH ────────────────────────────
+
+def _vault_resolve(rel_path: str) -> str | None:
+    """Resolve a vault-relative path; refuse anything that escapes the vault."""
+    try:
+        root = os.path.realpath(VAULT_PATH)
+        full = os.path.realpath(os.path.join(root, rel_path))
+        if os.path.commonpath([full, root]) != root:
+            return None
+        return full
+    except (ValueError, OSError):
+        return None
+
+
+def list_vault_notes(subfolder: str = "") -> str:
+    base = _vault_resolve(subfolder or ".")
+    if base is None or not os.path.isdir(base):
+        return f"Folder not found in vault: '{subfolder}'"
+    root = os.path.realpath(VAULT_PATH)
+    entries = []
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]  # skip .obsidian etc.
+        for f in sorted(filenames):
+            if f.endswith(".md"):
+                entries.append(os.path.relpath(os.path.join(dirpath, f), root))
+        if len(entries) > 200:
+            entries.append("... (truncated at 200 notes)")
+            break
+    return "\n".join(entries) if entries else "No notes found."
+
+
+def read_vault_note(path: str) -> str:
+    full = _vault_resolve(path)
+    if full is None or not os.path.isfile(full):
+        return f"Note not found in vault: '{path}'"
+    try:
+        with open(full, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError as e:
+        return f"Could not read '{path}': {e}"
+    if len(text) > 20000:
+        text = text[:20000] + "\n\n[... note truncated at 20,000 chars]"
+    return text
+
+
+def search_vault(query: str) -> str:
+    if not query.strip():
+        return "Empty search query."
+    q = query.lower()
+    root = os.path.realpath(VAULT_PATH)
+    hits = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for f in filenames:
+            if not f.endswith(".md"):
+                continue
+            fp = os.path.join(dirpath, f)
+            try:
+                with open(fp, "r", encoding="utf-8", errors="replace") as fh:
+                    for i, line in enumerate(fh, 1):
+                        if q in line.lower():
+                            rel = os.path.relpath(fp, root)
+                            hits.append(f"{rel}:{i}: {line.strip()[:150]}")
+                            if len(hits) >= 20:
+                                return "\n".join(hits) + "\n... (truncated at 20 matches)"
+                            break  # one hit per file keeps results scannable
+            except OSError:
+                continue
+    return "\n".join(hits) if hits else f"No matches for '{query}'."
+
+
+def write_vault_note(path: str, content: str, mode: str) -> str:
+    full = _vault_resolve(path)
+    if full is None:
+        return f"Refused: '{path}' resolves outside the vault."
+    if not full.endswith(".md"):
+        return "Refused: vault writes are limited to .md note files."
+    try:
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        if mode == "append" and os.path.exists(full):
+            with open(full, "a", encoding="utf-8") as f:
+                f.write("\n" + content)
+        else:
+            with open(full, "w", encoding="utf-8") as f:
+                f.write(content)
+        return f"Wrote {len(content)} chars to vault note '{path}' ({mode})."
+    except OSError as e:
+        return f"Could not write '{path}': {e}"
+
+
 # ── Human-in-the-loop gate for high-impact tools ──────────────────────────────
 # run_code and open_item can do real damage (they execute as your user account),
-# so JARVIS must ask out loud and hear an explicit "yes" before acting.
-DANGEROUS_TOOLS = {"run_code", "open_item"}
+# and write_vault_note modifies real study/career notes — all three must ask
+# out loud and hear an explicit "yes" before acting.
+DANGEROUS_TOOLS = {"run_code", "open_item", "write_vault_note"}
 
 _APPROVE_WORDS = ("yes", "yeah", "yep", "confirm", "go ahead", "do it", "approved", "affirmative")
 _DENY_WORDS = ("no", "don't", "dont", "cancel", "stop", "negative", "deny")
@@ -196,6 +333,12 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
             spoken_code = re.sub(r"\s+", " ", code_preview)[:80]
             spoken = f"I want to run {lang} code that begins: {spoken_code}"
             full = f"run_code[{lang}]: {code_preview}"
+        elif tool_name == "write_vault_note":
+            path = tool_input.get("path", "")
+            mode = tool_input.get("mode", "overwrite")
+            content_preview = str(tool_input.get("content", ""))[:160]
+            spoken = f"I want to {mode} the vault note {path}"
+            full = f"write_vault_note[{mode}] {path}: {content_preview}"
         else:
             target = tool_input.get("target", "")
             spoken = f"I want to open {target}"
@@ -211,4 +354,16 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
         return run_code(tool_input.get("code", ""), tool_input.get("lang", "python"))
     elif tool_name == "update_memory":
         return update_memory(tool_input.get("fact", ""))
+    elif tool_name == "list_vault_notes":
+        return list_vault_notes(tool_input.get("subfolder", ""))
+    elif tool_name == "read_vault_note":
+        return read_vault_note(tool_input.get("path", ""))
+    elif tool_name == "search_vault":
+        return search_vault(tool_input.get("query", ""))
+    elif tool_name == "write_vault_note":
+        return write_vault_note(
+            tool_input.get("path", ""),
+            tool_input.get("content", ""),
+            tool_input.get("mode", "overwrite"),
+        )
     return f"Unknown tool: {tool_name}"

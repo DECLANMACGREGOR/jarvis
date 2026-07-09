@@ -54,6 +54,22 @@ TOOL_DEFINITIONS = [
         },
     },
     {
+        "name": "capture_camera",
+        "description": "Capture one photo from the webcam and see it. The image comes back with face-recognition results for anyone JARVIS has been asked to remember. Use when the user asks what you see, who is there, or to look at something they're holding.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "enroll_face",
+        "description": "Look at the camera and permanently learn the face currently in view under the given name (e.g. when the user says 'this is me, remember that' use their name). Stores face embeddings locally only — never photos. Re-enrolling a name replaces its old samples.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Name to remember this face as, e.g. 'Declan'"}
+            },
+            "required": ["name"],
+        },
+    },
+    {
         "name": "list_vault_notes",
         "description": "List note files inside the user's Obsidian vault, optionally under a subfolder. Read-only.",
         "input_schema": {
@@ -276,6 +292,50 @@ def write_vault_note(path: str, content: str, mode: str) -> str:
         return f"Could not write '{path}': {e}"
 
 
+# ── Vision tools — one-shot capture, never silent, frames never persisted ────
+
+def _announce(line: str) -> None:
+    """Camera access must always be audible + visible, like memory writes."""
+    print(f"[JARVIS] CAMERA: {line}")
+    try:
+        import voice
+        voice.speak(line)
+    except Exception as e:
+        print(f"[JARVIS] Announce failed ({e}) — continuing.")
+
+
+def capture_camera() -> list | str:
+    import vision
+    _announce("Taking a look, sir.")
+    frame = vision.capture_frame()
+    if frame is None:
+        return "Camera capture failed — no webcam available or it's in use."
+    people = vision.identify_in_frame(frame)
+    if not people:
+        summary = "No faces detected in frame."
+    else:
+        parts = []
+        for p in people:
+            if p["name"]:
+                parts.append(f"{p['name']} (match {p['score']})")
+            else:
+                parts.append("an unrecognized person")
+        summary = f"Faces in frame: {', '.join(parts)}."
+    b64 = vision.frame_to_b64_jpeg(frame)
+    return [
+        {"type": "text", "text": f"[Camera capture] {summary} Known faces enrolled: {', '.join(vision.known_names()) or 'none'}. The image follows — describe or answer based on what you see."},
+        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
+    ]
+
+
+def enroll_face(name: str) -> str:
+    import vision
+    _announce(f"Hold still and look at the camera — learning your face as {name}.")
+    result = vision.enroll(name)
+    print(f"[JARVIS] ENROLL: {result}")
+    return result
+
+
 # ── Human-in-the-loop gate for high-impact tools ──────────────────────────────
 # run_code and open_item can do real damage (they execute as your user account),
 # and write_vault_note modifies real study/career notes — all three must ask
@@ -348,6 +408,10 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
 
     if tool_name == "web_search":
         return web_search(tool_input.get("query", ""))
+    elif tool_name == "capture_camera":
+        return capture_camera()
+    elif tool_name == "enroll_face":
+        return enroll_face(tool_input.get("name", ""))
     elif tool_name == "open_item":
         return open_item(tool_input.get("target", ""))
     elif tool_name == "run_code":

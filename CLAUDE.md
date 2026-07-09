@@ -8,7 +8,8 @@ A locally-running, privately-sourced JARVIS agent activated by push-to-talk. Sou
 - **Activation**: Push-to-talk — hold `PTT_KEY` (default F8, set in `config.py`) while speaking, release to send. No wake word, no ambient listening.
 - **STT**: `faster-whisper` (local, offline, private)
 - **TTS**: ElevenLabs (`eleven_turbo_v2_5`, sentence-chunked streaming)
-- **Tools**: web search (DuckDuckGo), open apps/files, run code/shell, update memory
+- **Tools**: web search (DuckDuckGo), open apps/files, run code/shell, update memory, vault (read/search/write), camera (capture + face enroll/recognize)
+- **Vision**: one-shot webcam capture via OpenCV; face recognition via YuNet+SFace ONNX (local, CPU). Enrolled faces in `memory/faces.json` (embeddings only, never photos). Models auto-download to `models/` on first use.
 - **Memory**: JSON file — persists facts + conversation summary across sessions
 
 ## File Map

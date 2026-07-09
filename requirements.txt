@@ -8,3 +8,4 @@ pygame>=2.5.0
 ddgs>=9.0.0
 keyboard>=0.13.0
 python-dotenv>=1.0.0
+opencv-python>=5.0.0        # vision: camera capture + YuNet/SFace face recognition

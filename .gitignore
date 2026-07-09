@@ -7,3 +7,6 @@ __pycache__/
 
 # Runtime state (personal data, changes constantly)
 memory/
+
+models/
+memory/faces.json

@@ -12,3 +12,4 @@ opencv-python>=5.0.0        # vision: camera capture + YuNet/SFace face recognit
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib
+PyQt6                      # HUD v2 (Neural Constellation)

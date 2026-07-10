@@ -144,16 +144,26 @@ def delete_event(event_id: str) -> str:
 
 # ── Gmail — read + draft only. No send function exists; see module docstring. ─
 
-def search_email(query: str, max_results: int = 8) -> str:
-    """Search messages with normal Gmail query syntax (from:, subject:, newer_than:...)."""
+def search_email(query: str, max_results: int = 8, include_all: bool = False) -> str:
+    """Search messages with normal Gmail query syntax (from:, subject:, newer_than:...).
+
+    By default, generic searches are restricted to the Primary category so
+    promotional/social/marketing mail (SHEIN, airline miles, etc.) doesn't
+    drown out real email. The filter is skipped when include_all=True or when
+    the query already pins down what it wants (category:, label:, or from:).
+    """
     try:
         svc = _get_service("gmail", "v1")
+        q = query.strip() or "in:inbox"
+        if not include_all and not any(op in q.lower() for op in ("category:", "label:", "from:")):
+            q += " category:primary"
         result = svc.users().messages().list(
-            userId="me", q=query, maxResults=max_results
+            userId="me", q=q, maxResults=max_results
         ).execute()
         msgs = result.get("messages", [])
         if not msgs:
-            return f"No emails matched: {query}"
+            return (f"No emails matched: {q}"
+                    + ("" if include_all else " (promotions/social filtered out — retry with include_all for everything)"))
         lines = []
         for m in msgs:
             meta = svc.users().messages().get(

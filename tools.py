@@ -162,11 +162,12 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "search_email",
-        "description": "Search Gmail with normal Gmail query syntax (e.g. 'from:someone newer_than:2d', 'subject:internship', 'in:inbox is:unread'). Returns sender, subject, date, and message id.",
+        "description": "Search Gmail with normal Gmail query syntax (e.g. 'from:someone newer_than:2d', 'subject:internship', 'in:inbox is:unread'). Returns sender, subject, date, and message id. By default filters to the Primary category (no promotions/social/marketing junk); set include_all true only if the user explicitly wants everything or is looking for something promotional (receipts, deals, airline offers).",
         "input_schema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Gmail search query"},
+                "include_all": {"type": "boolean", "description": "Include promotions/social categories (default false)"},
             },
             "required": ["query"],
         },
@@ -542,7 +543,10 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
         return google_tools.delete_event(tool_input.get("event_id", ""))
     elif tool_name == "search_email":
         import google_tools
-        return google_tools.search_email(tool_input.get("query", ""))
+        return google_tools.search_email(
+            tool_input.get("query", ""),
+            include_all=bool(tool_input.get("include_all", False)),
+        )
     elif tool_name == "get_email":
         import google_tools
         return google_tools.get_email(tool_input.get("message_id", ""))

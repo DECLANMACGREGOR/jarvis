@@ -27,3 +27,9 @@ SUMMARIZE_EVERY = 20       # auto-summarize conversation every N turns
 
 # Obsidian vault — tools are sandboxed to this directory only (see tools.py)
 VAULT_PATH = r"C:\Users\declan macgregor\Documents\DECLAN-MACGREGOR"
+
+# Morning briefing — weather location (Open-Meteo, no API key needed).
+# UPDATE on Aug 15: Stockholm is lat 59.3293, lon 18.0686, "Stockholm"
+BRIEFING_LAT = 40.7128
+BRIEFING_LON = -74.0060
+BRIEFING_PLACE = "New York, NY"

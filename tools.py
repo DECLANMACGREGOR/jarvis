@@ -114,6 +114,87 @@ TOOL_DEFINITIONS = [
             "required": ["path", "content", "mode"],
         },
     },
+    {
+        "name": "get_datetime",
+        "description": "Get the current date, day of week, and local time. Use whenever timing matters (scheduling, 'today', 'tomorrow', deadlines).",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "morning_briefing",
+        "description": "Fetch raw morning-briefing data: current datetime, local weather, and the next 2 days of calendar events. Compose it into a short natural spoken summary; optionally mix in top vault to-dos via vault tools if the user wants them.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "list_calendar_events",
+        "description": "List upcoming Google Calendar events. Returns start time, title, location, and event id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "days_ahead": {"type": "integer", "description": "How many days ahead to look (default 7)"},
+            },
+        },
+    },
+    {
+        "name": "create_calendar_event",
+        "description": "Create a Google Calendar event. Use get_datetime first if you need to resolve 'tomorrow' etc. Announced aloud.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string", "description": "Event title"},
+                "start_iso": {"type": "string", "description": "Start, ISO 8601 local time, e.g. 2026-07-10T14:00:00"},
+                "end_iso": {"type": "string", "description": "End, ISO 8601 local time"},
+                "description": {"type": "string", "description": "Optional details"},
+                "location": {"type": "string", "description": "Optional location"},
+            },
+            "required": ["summary", "start_iso", "end_iso"],
+        },
+    },
+    {
+        "name": "delete_calendar_event",
+        "description": "Delete a Google Calendar event by id (get the id from list_calendar_events). Destructive — requires spoken user confirmation.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "event_id": {"type": "string", "description": "The event id to delete"},
+            },
+            "required": ["event_id"],
+        },
+    },
+    {
+        "name": "search_email",
+        "description": "Search Gmail with normal Gmail query syntax (e.g. 'from:someone newer_than:2d', 'subject:internship', 'in:inbox is:unread'). Returns sender, subject, date, and message id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Gmail search query"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "get_email",
+        "description": "Read the full body of one email by message id (from search_email).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "message_id": {"type": "string", "description": "Gmail message id"},
+            },
+            "required": ["message_id"],
+        },
+    },
+    {
+        "name": "draft_email",
+        "description": "Create a DRAFT email in Gmail for the user to review and send themselves. JARVIS can never send email — drafts only. Announced aloud.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient email address"},
+                "subject": {"type": "string", "description": "Subject line"},
+                "body": {"type": "string", "description": "Plain-text email body"},
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
 ]
 
 
@@ -295,7 +376,7 @@ def write_vault_note(path: str, content: str, mode: str) -> str:
 # ── Vision tools — one-shot capture, never silent, frames never persisted ────
 
 def _announce(line: str) -> None:
-    """Camera access must always be audible + visible, like memory writes."""
+    """Real-world actions (camera, calendar, drafts) must always be audible + visible."""
     print(f"[JARVIS] CAMERA: {line}")
     try:
         import voice
@@ -338,9 +419,11 @@ def enroll_face(name: str) -> str:
 
 # ── Human-in-the-loop gate for high-impact tools ──────────────────────────────
 # run_code and open_item can do real damage (they execute as your user account),
-# and write_vault_note modifies real study/career notes — all three must ask
-# out loud and hear an explicit "yes" before acting.
-DANGEROUS_TOOLS = {"run_code", "open_item", "write_vault_note"}
+# write_vault_note modifies real study/career notes, and delete_calendar_event
+# destroys real schedule data — all must ask out loud and hear an explicit
+# "yes" before acting. Calendar creates and email drafts are additive/reviewable,
+# so they are announced aloud but not gated (see dispatch below).
+DANGEROUS_TOOLS = {"run_code", "open_item", "write_vault_note", "delete_calendar_event"}
 
 _APPROVE_WORDS = ("yes", "yeah", "yep", "confirm", "go ahead", "do it", "approved", "affirmative")
 _DENY_WORDS = ("no", "don't", "dont", "cancel", "stop", "negative", "deny")
@@ -399,6 +482,10 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
             content_preview = str(tool_input.get("content", ""))[:160]
             spoken = f"I want to {mode} the vault note {path}"
             full = f"write_vault_note[{mode}] {path}: {content_preview}"
+        elif tool_name == "delete_calendar_event":
+            event_id = tool_input.get("event_id", "")
+            spoken = "I want to delete a calendar event"
+            full = f"delete_calendar_event: id={event_id}"
         else:
             target = tool_input.get("target", "")
             spoken = f"I want to open {target}"
@@ -429,5 +516,41 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
             tool_input.get("path", ""),
             tool_input.get("content", ""),
             tool_input.get("mode", "overwrite"),
+        )
+    elif tool_name == "get_datetime":
+        import briefing
+        return briefing.get_datetime()
+    elif tool_name == "morning_briefing":
+        import briefing
+        return briefing.morning_briefing()
+    elif tool_name == "list_calendar_events":
+        import google_tools
+        return google_tools.list_events(int(tool_input.get("days_ahead", 7) or 7))
+    elif tool_name == "create_calendar_event":
+        import google_tools
+        summary = tool_input.get("summary", "")
+        _announce(f"Adding to your calendar: {summary}.")
+        return google_tools.create_event(
+            summary,
+            tool_input.get("start_iso", ""),
+            tool_input.get("end_iso", ""),
+            tool_input.get("description", ""),
+            tool_input.get("location", ""),
+        )
+    elif tool_name == "delete_calendar_event":
+        import google_tools
+        return google_tools.delete_event(tool_input.get("event_id", ""))
+    elif tool_name == "search_email":
+        import google_tools
+        return google_tools.search_email(tool_input.get("query", ""))
+    elif tool_name == "get_email":
+        import google_tools
+        return google_tools.get_email(tool_input.get("message_id", ""))
+    elif tool_name == "draft_email":
+        import google_tools
+        to = tool_input.get("to", "")
+        _announce(f"Drafting an email to {to} — it will wait in your drafts folder.")
+        return google_tools.create_draft(
+            to, tool_input.get("subject", ""), tool_input.get("body", "")
         )
     return f"Unknown tool: {tool_name}"

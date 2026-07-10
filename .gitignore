@@ -10,3 +10,5 @@ memory/
 
 models/
 memory/faces.json
+credentials.json
+memory/google_token.json

@@ -34,6 +34,9 @@ WHISPER_MODEL = "base"     # options: tiny, base, small, medium (larger = more a
 MEMORY_FILE = os.path.join(os.path.dirname(__file__), "memory", "jarvis_memory.json")
 SUMMARIZE_EVERY = 20       # auto-summarize conversation every N turns
 
+# Tasks — user-initiated reminders (a later step adds the scheduler that reads these)
+TASKS_FILE = os.path.join(os.path.dirname(__file__), "memory", "tasks.json")
+
 # Obsidian vault — tools are sandboxed to this directory only (see tools.py)
 VAULT_PATH = r"C:\Users\declan macgregor\Documents\DECLAN-MACGREGOR"
 

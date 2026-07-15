@@ -196,6 +196,50 @@ TOOL_DEFINITIONS = [
             "required": ["to", "subject", "body"],
         },
     },
+    {
+        "name": "add_task",
+        "description": "Save a task/reminder the user has explicitly asked to be reminded about, with a deadline. Use get_datetime first to resolve relative dates ('tomorrow', 'Friday') into an absolute ISO datetime. Only call this when the user directly asks you to track or remind them of something — never infer or invent tasks on your own.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "What the task is"},
+                "due_iso": {"type": "string", "description": "Deadline, ISO 8601 local time, e.g. 2026-08-14T17:00:00"},
+            },
+            "required": ["text", "due_iso"],
+        },
+    },
+    {
+        "name": "list_tasks",
+        "description": "List the user's saved tasks/reminders. By default shows only pending (not-yet-done) tasks.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "include_done": {"type": "boolean", "description": "Include already-completed tasks (default false)"},
+            },
+        },
+    },
+    {
+        "name": "complete_task",
+        "description": "Mark a saved task as done, by its id (from list_tasks).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "The task id to complete"},
+            },
+            "required": ["task_id"],
+        },
+    },
+    {
+        "name": "delete_task",
+        "description": "Permanently delete a saved task, by its id (from list_tasks).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "The task id to delete"},
+            },
+            "required": ["task_id"],
+        },
+    },
 ]
 
 
@@ -606,4 +650,16 @@ def dispatch(tool_name: str, tool_input: dict, channel: str = "voice") -> str:
         return google_tools.create_draft(
             to, tool_input.get("subject", ""), tool_input.get("body", "")
         )
+    elif tool_name == "add_task":
+        import tasks
+        return tasks.add_task(tool_input.get("text", ""), tool_input.get("due_iso", ""))
+    elif tool_name == "list_tasks":
+        import tasks
+        return tasks.list_tasks(bool(tool_input.get("include_done", False)))
+    elif tool_name == "complete_task":
+        import tasks
+        return tasks.complete_task(int(tool_input.get("task_id", 0)))
+    elif tool_name == "delete_task":
+        import tasks
+        return tasks.delete_task(int(tool_input.get("task_id", 0)))
     return f"Unknown tool: {tool_name}"

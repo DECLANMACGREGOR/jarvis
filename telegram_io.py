@@ -17,10 +17,11 @@ Safety model:
 - send_message() has no "send to arbitrary chat" parameter — outbound
   messages always go to the same allowlisted TELEGRAM_CHAT_ID.
 
-Step 2 scope (this file):
-- This step only proves the poller, allowlist, and send path work end to end.
-  Incoming text is simply echoed back. `handle_message()` below is the single
-  seam a later step will replace with the real agent brain (brain.think()).
+Step 3 scope (this file):
+- Incoming text is now routed through the real agent brain (brain.think()),
+  serialized with the voice loop via brain._brain_lock. `handle_message()`
+  is still the single seam for this — any future channel-specific behavior
+  goes here.
 """
 
 import threading
@@ -28,6 +29,7 @@ import time
 
 import requests
 
+import brain
 import config
 
 _API_URL = "https://api.telegram.org/bot{token}/{method}"
@@ -36,10 +38,17 @@ _API_URL = "https://api.telegram.org/bot{token}/{method}"
 def handle_message(text: str) -> str:
     """Handle one allowlisted incoming text message, return the reply to send.
 
-    Step 2: just echoes. A later step swaps this out (or reassigns
-    telegram_io.handle_message) to route text through the agent brain.
+    Routes through brain.think() (serialized with the voice loop). Any
+    exception must not escape — the poller needs a reply to send so the
+    update offset can advance, and the caller here already advances the
+    offset before this runs (see TelegramIO._run) so a poisoned message is
+    never reprocessed even if this raised.
     """
-    return f"echo: {text}"
+    try:
+        return brain.think(text, channel="telegram")
+    except Exception as e:
+        print(f"[JARVIS] Telegram handle_message failed — {type(e).__name__}: {e}")
+        return "Something went wrong handling that, sir."
 
 
 class TelegramIO:
@@ -82,8 +91,13 @@ class TelegramIO:
                 continue
 
             for update in updates:
-                self._handle_update(update)
+                # Advance the offset BEFORE handling: if _handle_update raises,
+                # the poisoned update must never be reprocessed forever.
                 self._offset = update["update_id"] + 1
+                try:
+                    self._handle_update(update)
+                except Exception as e:
+                    print(f"[JARVIS] Telegram update handling failed — {type(e).__name__}: {e}")
 
     def _handle_update(self, update: dict) -> None:
         message = update.get("message")

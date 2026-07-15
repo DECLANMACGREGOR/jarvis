@@ -467,7 +467,9 @@ def _confirm(spoken_desc: str, full_desc: str) -> bool:
         return False
 
 
-def dispatch(tool_name: str, tool_input: dict) -> str:
+# `channel` ("voice" or "telegram") is threaded through for the permission gate
+# rewrite in the next step; it is not consumed here yet.
+def dispatch(tool_name: str, tool_input: dict, channel: str = "voice") -> str:
     if tool_name in DANGEROUS_TOOLS:
         if tool_name == "run_code":
             lang = tool_input.get("lang", "python")

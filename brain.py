@@ -1,3 +1,5 @@
+import threading
+
 import anthropic
 import memory as mem_module
 import tools as tool_module
@@ -6,6 +8,12 @@ from config import ANTHROPIC_API_KEY, BASE_MODEL, SMART_MODEL, SUMMARIZE_EVERY, 
 _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 _history: list[dict] = []
+
+# think() mutates the module-global _history and is not thread-safe (see the
+# module-level comments in main.py / telegram_io.py). The voice loop and the
+# Telegram poller both call think() from different threads, so every turn
+# must be fully serialized through this lock.
+_brain_lock = threading.Lock()
 
 SYSTEM_PROMPT = """You are JARVIS — a private, intelligent AI assistant running locally for your user. You speak with calm confidence, dry wit, and precision. Keep responses concise unless depth is genuinely needed. You have access to tools: web search, opening apps/files, running code, and saving facts to memory.
 
@@ -123,66 +131,67 @@ def _strip_images(start_len: int) -> None:
                 ]
 
 
-def think(user_text: str) -> str:
+def think(user_text: str, channel: str = "voice") -> str:
     """Send user message to Claude, handle tool calls, return final text response."""
     global _session_turns
-    mem_module.increment_turn()  # persisted counter feeds the HUD
-    _session_turns += 1
-    # Summarize based on THIS session's history length. The old check used the
-    # persisted global counter, which could fire on a fresh session's first turn
-    # (wasted call) or let history grow 19 turns deep before triggering.
-    if _session_turns % SUMMARIZE_EVERY == 0:
-        _summarize_history()
+    with _brain_lock:
+        mem_module.increment_turn()  # persisted counter feeds the HUD
+        _session_turns += 1
+        # Summarize based on THIS session's history length. The old check used the
+        # persisted global counter, which could fire on a fresh session's first turn
+        # (wasted call) or let history grow 19 turns deep before triggering.
+        if _session_turns % SUMMARIZE_EVERY == 0:
+            _summarize_history()
 
-    model = _pick_model(user_text)
-    start_len = len(_history)
-    _history.append({"role": "user", "content": user_text})
+        model = _pick_model(user_text)
+        start_len = len(_history)
+        _history.append({"role": "user", "content": user_text})
 
-    try:
-        for _ in range(MAX_TOOL_ROUNDS):
-            response = _client.messages.create(
-                model=model,
-                max_tokens=4096,  # tool inputs (e.g. vault note content) count as output tokens
-                system=_build_system_blocks(),
-                tools=tool_module.TOOL_DEFINITIONS,
-                messages=_history,
-            )
+        try:
+            for _ in range(MAX_TOOL_ROUNDS):
+                response = _client.messages.create(
+                    model=model,
+                    max_tokens=4096,  # tool inputs (e.g. vault note content) count as output tokens
+                    system=_build_system_blocks(),
+                    tools=tool_module.TOOL_DEFINITIONS,
+                    messages=_history,
+                )
 
-            # Collect text and tool uses from response
-            assistant_content = response.content
-            _history.append({"role": "assistant", "content": assistant_content})
+                # Collect text and tool uses from response
+                assistant_content = response.content
+                _history.append({"role": "assistant", "content": assistant_content})
 
-            if response.stop_reason == "tool_use":
-                tool_results = []
-                for block in assistant_content:
-                    if block.type == "tool_use":
-                        print(f"[JARVIS] Tool: {block.name}({str(block.input)[:200]})")
-                        try:
-                            result = tool_module.dispatch(block.name, block.input)
-                        except Exception as e:
-                            # Never let a tool crash leave a dangling tool_use in history
-                            result = f"Tool error: {type(e).__name__}: {e}"
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result,
-                        })
-                _history.append({"role": "user", "content": tool_results})
-                continue  # loop back to get Claude's follow-up
+                if response.stop_reason == "tool_use":
+                    tool_results = []
+                    for block in assistant_content:
+                        if block.type == "tool_use":
+                            print(f"[JARVIS] Tool: {block.name}({str(block.input)[:200]})")
+                            try:
+                                result = tool_module.dispatch(block.name, block.input, channel)
+                            except Exception as e:
+                                # Never let a tool crash leave a dangling tool_use in history
+                                result = f"Tool error: {type(e).__name__}: {e}"
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": result,
+                            })
+                    _history.append({"role": "user", "content": tool_results})
+                    continue  # loop back to get Claude's follow-up
 
-            # Final text response
-            text_parts = [b.text for b in assistant_content if hasattr(b, "text")]
-            _strip_images(start_len)  # drop image payloads now that they've been seen
-            return " ".join(text_parts).strip()
+                # Final text response
+                text_parts = [b.text for b in assistant_content if hasattr(b, "text")]
+                _strip_images(start_len)  # drop image payloads now that they've been seen
+                return " ".join(text_parts).strip()
 
-        # Loop cap hit: history currently ends with a user-role tool_result block.
-        # We MUST append an assistant message here, or the next turn creates two
-        # consecutive user messages and the API rejects every call until restart.
-        fallback = "I stopped after too many tool steps, sir. Try rephrasing or breaking the task down."
-        _history.append({"role": "assistant", "content": fallback})
-        _strip_images(start_len)
-        return fallback
-    except Exception:
-        # Roll history back to before this turn so one failure can't poison future calls
-        del _history[start_len:]
-        raise
+            # Loop cap hit: history currently ends with a user-role tool_result block.
+            # We MUST append an assistant message here, or the next turn creates two
+            # consecutive user messages and the API rejects every call until restart.
+            fallback = "I stopped after too many tool steps, sir. Try rephrasing or breaking the task down."
+            _history.append({"role": "assistant", "content": fallback})
+            _strip_images(start_len)
+            return fallback
+        except Exception:
+            # Roll history back to before this turn so one failure can't poison future calls
+            del _history[start_len:]
+            raise

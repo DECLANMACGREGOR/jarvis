@@ -442,8 +442,22 @@ def _matches(reply: str, phrases: tuple[str, ...]) -> bool:
     return False
 
 
-def _confirm(spoken_desc: str, full_desc: str) -> bool:
-    """Speak a permission request, listen for a PTT answer. Deny by default."""
+def _confirm(spoken_desc: str, full_desc: str, channel: str = "voice") -> bool:
+    """Request explicit permission for a high-impact action. Deny by default.
+
+    The gated tool set is identical on both channels (DANGEROUS_TOOLS); only the
+    confirmation medium differs, because the presence signal differs:
+      - voice    : speak the request, listen for a spoken PTT yes/no.
+      - telegram : text the request, wait for a typed YES/NO reply (Face-ID-gated
+                   phone supplies the presence the mic did).
+    Both share the same _matches/_APPROVE_WORDS/_DENY_WORDS logic, deny-by-default
+    posture, and timeout = deny. An explicit affirmative with no deny word wins;
+    anything else — including silence/timeout — denies.
+    """
+    if channel == "telegram":
+        return _confirm_telegram(full_desc)
+
+    # ── Voice (spoken PTT) confirmation ──────────────────────────────────────
     print(f"\n[JARVIS] PERMISSION REQUEST: {full_desc}")
     try:
         import voice
@@ -467,8 +481,41 @@ def _confirm(spoken_desc: str, full_desc: str) -> bool:
         return False
 
 
-# `channel` ("voice" or "telegram") is threaded through for the permission gate
-# rewrite in the next step; it is not consumed here yet.
+def _confirm_telegram(full_desc: str) -> bool:
+    """Text-confirm a high-impact action over Telegram. Deny by default.
+
+    Runs on the Telegram poller thread (dispatch -> _confirm, called from within
+    telegram_io's handle_message). await_reply does a nested getUpdates poll on
+    that same thread to fetch the reply, so there is no deadlock and no separate
+    worker needed. Timeout (no reply in 60s) = deny. telegram_io is imported
+    lazily: it imports brain, which imports this module — a top-level import
+    would be a cycle.
+    """
+    print(f"\n[JARVIS] PERMISSION REQUEST (telegram): {full_desc}")
+    try:
+        import telegram_io
+        telegram_io.send_message(
+            "Permission required, sir.\n"
+            f"{full_desc}\n\n"
+            "Reply YES within 60 seconds to approve, or NO to cancel."
+        )
+        reply = telegram_io.await_reply(timeout=60)
+        if reply is None:
+            print("[JARVIS] No Telegram reply within 60s — denying by default.")
+            telegram_io.send_message("No reply received — action cancelled.")
+            return False
+        low = reply.lower()
+        print(f"[JARVIS] Telegram permission reply: {low!r}")
+        approved = _matches(low, _APPROVE_WORDS) and not _matches(low, _DENY_WORDS)
+        telegram_io.send_message("Approved — proceeding, sir." if approved else "Cancelled.")
+        return approved
+    except Exception as e:
+        print(f"[JARVIS] Telegram confirmation failed ({e}) — denying by default.")
+        return False
+
+
+# `channel` ("voice" or "telegram") selects the confirmation medium for the
+# permission gate below. The gated set (DANGEROUS_TOOLS) is the same on both.
 def dispatch(tool_name: str, tool_input: dict, channel: str = "voice") -> str:
     if tool_name in DANGEROUS_TOOLS:
         if tool_name == "run_code":
@@ -493,7 +540,7 @@ def dispatch(tool_name: str, tool_input: dict, channel: str = "voice") -> str:
             target = tool_input.get("target", "")
             spoken = f"I want to open {target}"
             full = f"open_item: {target}"
-        if not _confirm(spoken, full):
+        if not _confirm(spoken, full, channel):
             return "User denied permission for this action. Do not retry unless the user asks again."
 
     if tool_name == "web_search":

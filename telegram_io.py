@@ -16,6 +16,8 @@ Safety model:
   happens.
 - send_message() has no "send to arbitrary chat" parameter — outbound
   messages always go to the same allowlisted TELEGRAM_CHAT_ID.
+- await_reply() (used by the permission gate for typed YES/NO confirmations)
+  re-applies the same allowlist check, so a confirmation can only come from me.
 
 Step 3 scope (this file):
 - Incoming text is now routed through the real agent brain (brain.think()),
@@ -92,8 +94,11 @@ class TelegramIO:
 
             for update in updates:
                 # Advance the offset BEFORE handling: if _handle_update raises,
-                # the poisoned update must never be reprocessed forever.
-                self._offset = update["update_id"] + 1
+                # the poisoned update must never be reprocessed forever. Use max()
+                # so a nested await_reply poll (during a permission confirmation)
+                # that already advanced the offset past this batch is never
+                # regressed — otherwise a consumed YES/NO could be re-fetched.
+                self._offset = max(self._offset, update["update_id"] + 1)
                 try:
                     self._handle_update(update)
                 except Exception as e:
@@ -114,6 +119,47 @@ class TelegramIO:
         if reply:
             self.send_message(reply)
 
+    def await_reply(self, timeout: float) -> str | None:
+        """Block up to `timeout`s for the next allowlisted text message; return it.
+
+        Used by the permission gate (_confirm_telegram) to fetch a YES/NO reply.
+        It runs on THIS poller thread — the confirmation sits inside the call
+        chain _run -> _handle_update -> handle_message -> brain.think -> dispatch
+        -> _confirm — so the outer _run poll is suspended up the stack. We keep
+        polling getUpdates here to fetch the reply; because it's the same thread
+        that owns getUpdates, there is never a second concurrent long-poll.
+        self._offset is shared and advanced monotonically, so neither the
+        original command nor this reply is ever double-processed. Returns None on
+        timeout. Non-allowlisted messages are dropped here too.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            long_poll = max(1, min(20, int(remaining)))
+            try:
+                resp = requests.get(
+                    self._url("getUpdates"),
+                    params={"offset": self._offset, "timeout": long_poll},
+                    timeout=long_poll + 10,
+                )
+                resp.raise_for_status()
+                updates = resp.json().get("result", [])
+            except requests.exceptions.RequestException as e:
+                print(f"[JARVIS] Telegram await_reply poll error — {type(e).__name__}: {e}")
+                time.sleep(1)
+                continue
+
+            for update in updates:
+                self._offset = max(self._offset, update["update_id"] + 1)
+                message = update.get("message")
+                if not message or not message.get("text"):
+                    continue
+                chat_id = message.get("chat", {}).get("id")
+                if str(chat_id) != str(config.TELEGRAM_CHAT_ID):
+                    continue  # allowlist enforced on replies too
+                return message["text"]
+        return None
+
 
 # ── Module-level singleton ─────────────────────────────────────────────────────
 
@@ -131,3 +177,10 @@ def start() -> None:
 def send_message(text: str) -> None:
     if _telegram:
         _telegram.send_message(text)
+
+
+def await_reply(timeout: float) -> str | None:
+    """Wait for the next allowlisted text message (permission-gate replies)."""
+    if _telegram:
+        return _telegram.await_reply(timeout)
+    return None

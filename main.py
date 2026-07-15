@@ -13,6 +13,7 @@ import tools as tool_module
 import memory as mem_module
 import hud
 import telegram_io
+import presence
 
 
 def check_env() -> bool:
@@ -71,6 +72,7 @@ def main():
                 continue
 
             print(f"[You] {text}")
+            presence.mark_ptt()
             hud.update(status="PROCESSING", command=text)
 
             response = brain.think(text)

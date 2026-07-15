@@ -7,6 +7,15 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "onwK4e9ZLuTAKqWW03F9")  # default: Daniel
 
+# Telegram — second I/O channel (text-mode equivalent of the F8 PTT loop).
+# Secret pattern mirrors the API keys above: values live in .env (gitignored),
+# loaded here, never committed. TELEGRAM_CHAT_ID is the single allowlisted
+# account (mine) — the poller silently ignores every other chat_id.
+#   TELEGRAM_BOT_TOKEN: from @BotFather after /newbot
+#   TELEGRAM_CHAT_ID:   my numeric Telegram user id (from @userinfobot)
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # kept as str; compared against str(update chat id)
+
 # Models — dynamic routing:
 #   BASE_MODEL handles everyday turns (fast + cheap).
 #   SMART_MODEL is used when the request needs heavy reasoning (coding, analysis, planning),

@@ -5,6 +5,7 @@ credentials.json
 # Python
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # Runtime state (personal data, changes constantly)
 memory/

@@ -84,6 +84,17 @@ Windows-only (uses `winreg`, `os.startfile`, and the `keyboard` package).
 - Memory, tasks, tokens, and enrolled faces live in the gitignored `memory/` directory.
 - Home coordinates and vault path are configured through `.env`, not committed.
 
+## Tests
+
+The safety-critical pure logic is covered by pytest — TTS chunking edge cases, reminder stage thresholds, confirmation-word matching ("no" must not match inside "notepad"), and vault path-escape refusal:
+
+```powershell
+pip install -r requirements-dev.txt
+pytest
+```
+
+CI runs the suite on every push ([tests.yml](.github/workflows/tests.yml), Windows runner).
+
 ## Roadmap
 
 - **Reel-to-AI** (in progress on a feature branch): a Gmail-fed queue that turns saved Instagram reels into extracted, versioned agent skills via yt-dlp + vision.

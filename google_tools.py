@@ -85,6 +85,26 @@ def _get_service(api: str, version: str):
     return _services[key]
 
 
+def warm_up() -> bool:
+    """Authenticate at startup instead of on the first Calendar/Gmail call.
+
+    Deliberately synchronous: the whole point is that a token refresh — or a
+    full browser consent, if the refresh token died — happens while JARVIS is
+    booting, not in the middle of a spoken turn. Google is optional, so a
+    missing credentials.json or a failed handshake is reported and swallowed;
+    the tools retry on first use and JARVIS boots either way.
+    """
+    if not os.path.exists(CREDENTIALS_FILE):
+        return False
+    try:
+        _get_service("calendar", "v3")
+        _get_service("gmail", "v1")
+        return True
+    except Exception as e:
+        print(f"[JARVIS] Google warm-up failed ({e}) — Calendar and Gmail will retry on first use.")
+        return False
+
+
 # ── Calendar ──────────────────────────────────────────────────────────────────
 
 def list_events(days_ahead: int = 7, max_results: int = 15) -> str:

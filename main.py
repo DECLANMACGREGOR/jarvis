@@ -15,6 +15,7 @@ import stt
 import brain
 import voice
 import tools as tool_module
+import google_tools
 import memory as mem_module
 import hud
 import telegram_io
@@ -56,6 +57,9 @@ def main():
 
     # Warm up Whisper before first use
     stt.warm_up()
+    # Authenticate Google here so a consent browser can't surprise a live turn
+    if google_tools.warm_up():
+        print("[JARVIS] Google Calendar + Gmail connected.")
     hud.update(status="STANDBY")
 
     while True:

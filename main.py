@@ -14,6 +14,7 @@ import memory as mem_module
 import hud
 import telegram_io
 import presence
+import nudge
 
 
 def check_env() -> bool:
@@ -47,6 +48,7 @@ def main():
     hud.start()
     hud.update(status="STANDBY", turn=mem.get("turn_count", 0))
     telegram_io.start()
+    nudge.start()
 
     # Warm up Whisper before first use
     stt._get_model()  # type: ignore[attr-defined]

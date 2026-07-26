@@ -9,7 +9,9 @@ def load() -> dict:
     if not os.path.exists(MEMORY_FILE):
         return dict(_DEFAULT, user_facts=[])
     try:
-        with open(MEMORY_FILE, "r") as f:
+        # encoding is explicit: Windows defaults open() to cp1252, which silently
+        # decodes UTF-8 fact text into mojibake that the next save() bakes in.
+        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
             mem = json.load(f)
     except (json.JSONDecodeError, OSError) as e:
         # A crash mid-write can truncate the file. Preserve the evidence,
@@ -31,8 +33,8 @@ def save(mem: dict) -> None:
     os.makedirs(os.path.dirname(MEMORY_FILE), exist_ok=True)
     # Atomic write: never leave a truncated file if we crash mid-dump.
     tmp = MEMORY_FILE + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(mem, f, indent=2)
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(mem, f, indent=2, ensure_ascii=False)
     os.replace(tmp, MEMORY_FILE)
 
 

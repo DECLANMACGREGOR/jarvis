@@ -14,6 +14,12 @@ RESPONSE_DEADLINE_S = 90  # hard cap for speaking one full response, not per sen
 _client: ElevenLabs | None = None
 _pygame_ready = False
 
+# Serializes all audio playback. The main loop speaks responses; the nudge
+# scheduler speaks reminders from its own thread. Without this they would both
+# drive the single pygame mixer at once and garble each other — a nudge instead
+# waits for the current response to finish (and vice versa).
+_speak_lock = threading.Lock()
+
 
 def _get_client() -> ElevenLabs:
     global _client
@@ -74,17 +80,28 @@ def _split_sentences(text: str) -> list[str]:
     return merged
 
 
-def speak(text: str) -> None:
+def speak(text: str) -> bool:
     """Convert text to speech and play it. Speaks sentence-by-sentence for low latency.
 
     Holding the PTT key at any point cuts JARVIS off (barge-in) and cancels
     the remaining TTS fetches. One shared deadline caps the whole response.
+
+    Returns True if the text was delivered to the user's ears, False if it was
+    cut short (barge-in or deadline) and they effectively didn't hear it. The
+    main loop ignores this — a barged-in response is *meant* to be dropped — but
+    the nudge scheduler needs it: an unheard reminder must not be marked as
+    delivered, or it is lost forever.
     """
     client = _get_client()
     sentences = _split_sentences(text)
     if not sentences:
-        return
+        return True  # nothing to say (e.g. a lone "M." shard) — not a failure
 
+    with _speak_lock:
+        return _speak_locked(client, sentences)
+
+
+def _speak_locked(client: ElevenLabs, sentences: list[str]) -> bool:
     audio_queue: queue.Queue[bytes | None] = queue.Queue()
     cancel = threading.Event()
     deadline = time.monotonic() + RESPONSE_DEADLINE_S
@@ -122,3 +139,5 @@ def speak(text: str) -> None:
         if not chunk or cancel.is_set():
             continue  # failed sentence, or user cut us off — drain to sentinel
         _play_audio_bytes(chunk, deadline, cancel)
+
+    return not cancel.is_set()

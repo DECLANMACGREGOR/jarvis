@@ -447,19 +447,24 @@ def capture_camera() -> list | str:
     if frame is None:
         return "Camera capture failed — no webcam available or it's in use."
     people = vision.identify_in_frame(frame)
-    if not people:
-        summary = "No faces detected in frame."
-    else:
+    if people:
         parts = []
         for p in people:
             if p["name"]:
                 parts.append(f"{p['name']} (match {p['score']})")
             else:
                 parts.append("an unrecognized person")
-        summary = f"Faces in frame: {', '.join(parts)}."
+        summary = (f"Face recognition found {', '.join(parts)}. "
+                   f"Enrolled names: {', '.join(vision.known_names()) or 'none'}.")
+    else:
+        # Deliberately silent about faces when there are none: "no faces
+        # detected" tells Claude nothing the photo doesn't already show, and
+        # primes it to open with an apology when the user is holding up
+        # notes or an object rather than their face.
+        summary = "Photo captured."
     b64 = vision.frame_to_b64_jpeg(frame)
     return [
-        {"type": "text", "text": f"[Camera capture] {summary} Known faces enrolled: {', '.join(vision.known_names()) or 'none'}. The image follows — describe or answer based on what you see."},
+        {"type": "text", "text": f"[Camera capture] {summary} The image follows — answer the user's question directly from what you see. Only bring up face recognition if they asked who is there."},
         {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
     ]
 

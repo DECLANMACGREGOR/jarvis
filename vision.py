@@ -68,9 +68,9 @@ def _get_models():
     return _detector, _recognizer
 
 
-def capture_frame(warmup: int = 5) -> np.ndarray | None:
-    """Open the webcam, grab one frame, release immediately. None on failure."""
-    cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # DSHOW: fast open on Windows
+def _capture_with_backend(backend: int, warmup: int) -> np.ndarray | None:
+    """Grab one frame through a specific OpenCV capture backend, or None."""
+    cap = cv2.VideoCapture(0, backend)
     if not cap.isOpened():
         return None
     try:
@@ -82,6 +82,22 @@ def capture_frame(warmup: int = 5) -> np.ndarray | None:
         return frame
     finally:
         cap.release()
+
+
+def capture_frame(warmup: int = 5) -> np.ndarray | None:
+    """Open the webcam, grab one frame, release immediately. None on failure.
+
+    DSHOW opens fast but claims the device exclusively, so it comes back empty
+    whenever another app already holds the webcam — the Windows Camera app
+    being open is enough. MSMF goes through the Windows Frame Server, which
+    shares the device, but is slower to open, so it's only tried once DSHOW has
+    actually failed. The common case pays nothing for the fallback.
+    """
+    frame = _capture_with_backend(cv2.CAP_DSHOW, warmup)
+    if frame is None:
+        print("[JARVIS] Webcam unavailable on DirectShow — retrying via Media Foundation.")
+        frame = _capture_with_backend(cv2.CAP_MSMF, warmup)
+    return frame
 
 
 def _detect_faces(frame: np.ndarray):

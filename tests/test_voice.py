@@ -5,7 +5,7 @@ low-latency streaming, but merge fragments under 20 chars so ElevenLabs
 never receives a near-empty input it would garble, and drop a lone shard
 under 4 chars entirely rather than synthesize noise.
 """
-from voice import _split_sentences
+from voice import _sanitize_for_tts, _split_sentences
 
 
 def test_two_real_sentences_stay_separate():
@@ -45,3 +45,25 @@ def test_four_chars_is_the_keep_boundary():
 def test_empty_and_whitespace_input_says_nothing():
     assert _split_sentences("") == []
     assert _split_sentences("   ") == []
+
+
+# ── _sanitize_for_tts: markdown/symbols must never reach the voice ───────────
+
+def test_markdown_bold_and_degree_symbol_become_speech():
+    # The exact failure heard live: "**75°F and clear**" was read as
+    # "asterisk asterisk seventy-five degree-sign F".
+    assert (_sanitize_for_tts("Currently **75°F and clear** out there")
+            == "Currently 75 degrees Fahrenheit and clear out there")
+
+
+def test_percent_after_a_number_is_spoken():
+    assert _sanitize_for_tts("just 1% chance of rain") == "just 1 percent chance of rain"
+
+
+def test_markdown_link_speaks_only_its_label():
+    assert _sanitize_for_tts("see [the docs](https://example.com) for more") == "see the docs for more"
+
+
+def test_plain_prose_passes_through_unchanged():
+    text = "Good evening, sir. The forecast is clear."
+    assert _sanitize_for_tts(text) == text

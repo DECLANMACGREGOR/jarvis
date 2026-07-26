@@ -67,6 +67,20 @@ def _play_audio_bytes(data: bytes, deadline: float, cancel: threading.Event) -> 
             pass
 
 
+def _sanitize_for_tts(text: str) -> str:
+    """Make model text speakable. Claude sometimes formats with markdown and
+    symbols; ElevenLabs reads them literally ("asterisk asterisk seventy-five
+    degree-sign F"), so strip formatting and expand symbols on the spoken path
+    only — the printed/HUD text keeps the original.
+    """
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)  # [label](url) -> label
+    text = re.sub(r"[*_`#]+", "", text)                    # markdown markers
+    text = text.replace("°F", " degrees Fahrenheit").replace("°C", " degrees Celsius")
+    text = text.replace("°", " degrees")
+    text = re.sub(r"(?<=\d)%", " percent", text)
+    return re.sub(r"[ \t]{2,}", " ", text).strip()
+
+
 def _split_sentences(text: str) -> list[str]:
     raw = [s.strip() for s in re.split(r'(?<=[.!?])\s+', text) if s.strip()]
     # Merge tiny fragments into their neighbor. Abbreviations like "9:41 P.M."
@@ -99,7 +113,7 @@ def speak(text: str) -> bool:
     delivered, or it is lost forever.
     """
     client = _get_client()
-    sentences = _split_sentences(text)
+    sentences = _split_sentences(_sanitize_for_tts(text))
     if not sentences:
         return True  # nothing to say (e.g. a lone "M." shard) — not a failure
 

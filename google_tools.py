@@ -62,8 +62,16 @@ def _get_service(api: str, version: str):
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except Exception as e:
+                # Refresh tokens die (revoked, or the 7-day expiry Google
+                # applies while the OAuth app is in Testing mode). Fall back
+                # to a fresh browser consent instead of erroring on every
+                # call until the token file is deleted by hand.
+                print(f"[JARVIS] Google token refresh failed ({e}) — re-authorizing in browser.")
+                creds = None
+        if not creds or not creds.valid:
             if not os.path.exists(CREDENTIALS_FILE):
                 raise RuntimeError(SETUP_HELP)
             flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_FILE, SCOPES)

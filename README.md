@@ -1,3 +1,5 @@
+[![tests](https://github.com/DECLANMACGREGOR/jarvis/actions/workflows/tests.yml/badge.svg)](https://github.com/DECLANMACGREGOR/jarvis/actions/workflows/tests.yml)
+
 # J.A.R.V.I.S. — a local push-to-talk voice agent
 
 A locally-running, private, Iron Man-style voice assistant for Windows. Hold a key, speak, release — JARVIS transcribes locally, thinks with Claude, acts through a permission-gated toolset, and answers out loud in a British voice, with a floating HUD tracking every turn.

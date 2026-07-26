@@ -2,20 +2,38 @@
 
 # J.A.R.V.I.S. — a local push-to-talk voice agent
 
+<!-- Media: drop files into docs/ then uncomment. Keep demo.gif under ~10 MB.
+![JARVIS demo — push-to-talk turn with tool use](docs/demo.gif)
+
+| ![HUD during a response](docs/hud.png) | ![Permission gate denying a run_code request](docs/permission-gate.png) | ![Telegram YES/NO confirmation](docs/telegram-confirm.png) |
+|:--:|:--:|:--:|
+| The HUD mid-response | Deny-by-default permission gate | Same gate over Telegram |
+-->
+
+
 A locally-running, private, Iron Man-style voice assistant for Windows. Hold a key, speak, release — JARVIS transcribes locally, thinks with Claude, acts through a permission-gated toolset, and answers out loud in a British voice, with a floating HUD tracking every turn.
 
 > Speech-to-text is fully local and the mic is only open while the key is held. The only data that leaves the machine is the text sent to the Claude and ElevenLabs APIs, plus the tool calls you approve.
 
-## The loop
+## Architecture
 
-```
-hold F8 ──► record mic ──► faster-whisper (local STT)
-                                   │
-                             brain.think()
-                     Claude + tools, serialized turns
-                                   │
-                        ElevenLabs TTS (streaming)
-              hold F8 mid-sentence to barge in and cut it off
+```mermaid
+flowchart TD
+    PTT["Hold F8 — mic records only while held"] --> W["faster-whisper STT (local, CPU)"]
+    TG["Telegram (single allowlisted chat)"] --> B
+    W --> B["brain.think() — turns fully serialized"]
+    B <--> C["Claude API — dynamic model routing + prompt cache"]
+    C -- "tool call" --> G{"dangerous tool?"}
+    G -- "no" --> T["22 tools — web, calendar, Gmail drafts, camera, vault, tasks"]
+    G -- "yes" --> P["ask the user: spoken or typed YES (deny by default)"]
+    P -- "approved" --> T
+    P -- "denied / timeout" --> C
+    T -- "results, framed as untrusted data" --> C
+    C -- "final answer" --> V["ElevenLabs TTS — F8 barges in"]
+    B --> H["HUD window"]
+    N["nudge scheduler — structurally cannot reach tools"] --> R{"user at the PC?"}
+    R -- "yes" --> V
+    R -- "no" --> TGO["Telegram message"]
 ```
 
 ## Features
@@ -64,12 +82,28 @@ This project treats a tool-using voice agent as an untrusted-input problem, and 
 
 ## Setup
 
-Windows-only (uses `winreg`, `os.startfile`, and the `keyboard` package).
+Windows-only (uses `winreg`, `os.startfile`, and the `keyboard` package). Requires Python 3.12+.
 
-1. **Python 3.12+ venv** — install deps with `pip install -r requirements.txt`. If ElevenLabs install fails with path-length errors, create the venv somewhere short (e.g. `C:\jv`) — Windows' 260-char path limit.
-2. **Keys** — copy `.env.example` to `.env` and fill in `ANTHROPIC_API_KEY` and `ELEVENLABS_API_KEY` (plus optional Telegram/vault/location values).
-3. **Google (optional)** — create an OAuth desktop client in Google Cloud Console with the Calendar + Gmail APIs enabled, save it as `credentials.json` in the project root, then run `python google_tools.py` for a one-time browser consent and self-test.
-4. **Run** — `python main.py`. First run downloads the Whisper model (~150 MB) and, on first camera use, the two face-recognition ONNX models.
+```powershell
+git clone https://github.com/DECLANMACGREGOR/jarvis.git
+cd jarvis
+
+# Create the venv at a SHORT path — some deps have filenames long enough
+# to hit Windows' 260-char path limit in a deeply nested folder.
+python -m venv C:\jv
+C:\jv\Scripts\pip install -r requirements.txt
+
+# Configure keys, then run
+copy .env.example .env      # fill in ANTHROPIC_API_KEY + ELEVENLABS_API_KEY
+C:\jv\Scripts\python main.py
+```
+
+Notes:
+
+1. **First run** downloads the Whisper model (~150 MB, one time); the two face-recognition ONNX models download on first camera use. If startup looks stalled, it's downloading.
+2. **Optional — Telegram**: create a bot with @BotFather, get your numeric user id from @userinfobot, add both to `.env`. Leave blank to run voice-only.
+3. **Optional — Google**: create an OAuth desktop client in Google Cloud Console with the Calendar + Gmail APIs enabled, save it as `credentials.json` in the project root, then run `C:\jv\Scripts\python google_tools.py` for a one-time browser consent and self-test.
+4. **Verify the install** (optional): `C:\jv\Scripts\pip install -r requirements-dev.txt`, then `C:\jv\Scripts\python -m pytest` — 30 tests should pass.
 
 ## Usage
 

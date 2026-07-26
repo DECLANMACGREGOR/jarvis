@@ -42,11 +42,3 @@ def record_while_held() -> np.ndarray:
     if not chunks:
         return np.zeros(0, dtype=np.float32)
     return np.concatenate(chunks).astype(np.float32) / 32768.0
-
-
-def listen() -> np.ndarray:
-    """Wait for PTT press, record while held, return the audio."""
-    print(f"\n[JARVIS] Hold [{PTT_KEY.upper()}] and speak. Release when done.")
-    wait_for_ptt()
-    print("[JARVIS] Recording — release the key when finished.")
-    return record_while_held()

@@ -19,10 +19,10 @@ Safety model:
 - await_reply() (used by the permission gate for typed YES/NO confirmations)
   re-applies the same allowlist check, so a confirmation can only come from me.
 
-Step 3 scope (this file):
-- Incoming text is now routed through the real agent brain (brain.think()),
+Routing:
+- Incoming text goes through the real agent brain (brain.think()),
   serialized with the voice loop via brain._brain_lock. `handle_message()`
-  is still the single seam for this — any future channel-specific behavior
+  is the single seam for this — any future channel-specific behavior
   goes here.
 """
 

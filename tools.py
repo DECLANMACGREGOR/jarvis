@@ -1,3 +1,9 @@
+"""Tool schemas + implementations for brain.py's tool-use loop.
+
+High-impact tools (the DANGEROUS_TOOLS set below) sit behind an explicit
+voice/Telegram confirmation gate; real-world actions that aren't gated are
+always announced aloud. Vault access is sandboxed to VAULT_PATH.
+"""
 import os
 import re
 import subprocess
@@ -332,6 +338,8 @@ def update_memory(fact: str) -> str:
 
 def _vault_resolve(rel_path: str) -> str | None:
     """Resolve a vault-relative path; refuse anything that escapes the vault."""
+    if not VAULT_PATH:  # unset in .env — vault tools disabled, never sandbox to cwd
+        return None
     try:
         root = os.path.realpath(VAULT_PATH)
         full = os.path.realpath(os.path.join(root, rel_path))
@@ -374,6 +382,8 @@ def read_vault_note(path: str) -> str:
 
 
 def search_vault(query: str) -> str:
+    if not VAULT_PATH:  # same guard as _vault_resolve — never walk the cwd
+        return "Vault tools are disabled (VAULT_PATH not set in .env)."
     if not query.strip():
         return "Empty search query."
     q = query.lower()

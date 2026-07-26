@@ -8,7 +8,7 @@ A locally-running, privately-sourced JARVIS agent activated by push-to-talk. Sou
 - **Activation**: Push-to-talk — hold `PTT_KEY` (default F8, set in `config.py`) while speaking, release to send. No wake word, no ambient listening.
 - **STT**: `faster-whisper` (local, offline, private)
 - **TTS**: ElevenLabs (`eleven_turbo_v2_5`, sentence-chunked streaming)
-- **Tools**: web search (DuckDuckGo), open apps/files, run code/shell, update memory, vault (read/search/write), camera (capture + face enroll/recognize)
+- **Tools**: web search (DuckDuckGo), open apps/files, run code/shell, update memory, vault (read/search/write), camera (capture + face enroll/recognize), Google Calendar + Gmail (read/draft), tasks/reminders, morning briefing
 - **Vision**: one-shot webcam capture via OpenCV; face recognition via YuNet+SFace ONNX (local, CPU). Enrolled faces in `memory/faces.json` (embeddings only, never photos). Models auto-download to `models/` on first use.
 - **Memory**: JSON file — persists facts + conversation summary across sessions
 
@@ -19,9 +19,17 @@ A locally-running, privately-sourced JARVIS agent activated by push-to-talk. Sou
 | `listener.py` | Push-to-talk key detection + voice recording |
 | `stt.py` | Whisper speech-to-text |
 | `brain.py` | Claude API, tool orchestration, auto-summarize |
-| `voice.py` | ElevenLabs TTS + playback |
-| `tools.py` | web_search, open_item, run_code, update_memory |
+| `voice.py` | ElevenLabs TTS + playback, barge-in |
+| `tools.py` | Tool schemas + implementations, DANGEROUS_TOOLS permission gate |
+| `google_tools.py` | Google Calendar + Gmail (read/draft only — no send exists) |
+| `briefing.py` | Morning briefing data: datetime, weather, calendar |
+| `vision.py` | Webcam capture + YuNet/SFace face recognition |
 | `memory.py` | Load/save persistent memory |
+| `tasks.py` | User-initiated task/reminder store |
+| `nudge.py` | Deadline-reminder scheduler (structural no-tools guarantee) |
+| `presence.py` | Last-PTT-age presence heuristic for nudge routing |
+| `telegram_io.py` | Telegram text channel, single-chat allowlist |
+| `hud.py` | Tkinter HUD (v2 mockup: `hud_v2_neural_mockup.py`) |
 | `config.py` | All settings + API keys via .env |
 | `memory/jarvis_memory.json` | Persistent facts + conversation summary |
 

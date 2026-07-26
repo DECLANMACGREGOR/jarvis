@@ -3,9 +3,9 @@ tasks.py — JARVIS's user-initiated task/reminder store.
 
 Storage model mirrors memory.py exactly: corrupt-file recovery (rename to
 .corrupt, print a notice, start fresh) and atomic writes (dump to .tmp, then
-os.replace). A LATER step adds a background scheduler that reads these tasks
-and sends reminders based on the `notified` thresholds; this module only
-initializes that field — no scheduling/nudge logic here.
+os.replace). The nudge scheduler (nudge.py) reads these tasks and sends
+reminders based on the `notified` thresholds; this module only initializes
+that field — no scheduling/nudge logic here.
 
 Tasks are USER-INITIATED ONLY: JARVIS must never create a task on its own
 inference — only in direct response to the user explicitly asking to be
@@ -21,8 +21,8 @@ from config import TASKS_FILE
 
 _DEFAULT = {"tasks": []}
 
-# Serializes read-modify-write sequences. Step 7 adds a second writer — the
-# nudge scheduler thread (mark_notified) — running concurrently with add/
+# Serializes read-modify-write sequences. The nudge scheduler thread
+# (mark_notified) is a second writer, running concurrently with add/
 # complete/delete from the voice and Telegram threads. Without this, a
 # scheduler save could clobber a just-added task (lost update). Reads
 # (load/list_tasks) don't need it: save() is atomic (tmp + os.replace), so a

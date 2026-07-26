@@ -1,3 +1,9 @@
+"""Claude orchestration: dynamic model routing, the tool-use loop, and
+history management with auto-summarization.
+
+Both I/O channels (voice loop and Telegram poller) funnel into think(), fully
+serialized through _brain_lock.
+"""
 import threading
 
 import anthropic
@@ -9,10 +15,10 @@ _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 _history: list[dict] = []
 
-# think() mutates the module-global _history and is not thread-safe (see the
-# module-level comments in main.py / telegram_io.py). The voice loop and the
-# Telegram poller both call think() from different threads, so every turn
-# must be fully serialized through this lock.
+# think() mutates the module-global _history and is not thread-safe. The voice
+# loop and the Telegram poller (see telegram_io.py's docstring) both call
+# think() from different threads, so every turn must be fully serialized
+# through this lock.
 _brain_lock = threading.Lock()
 
 SYSTEM_PROMPT = """You are JARVIS — a private, intelligent AI assistant running locally for your user. You speak with calm confidence, dry wit, and precision. Keep responses concise unless depth is genuinely needed. You have access to tools: web search, opening apps/files, running code, and saving facts to memory.

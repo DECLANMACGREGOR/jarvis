@@ -1,3 +1,7 @@
+"""Iron Man-style tkinter HUD: live status, command/response text, arc-reactor
+animation. Runs on its own thread; other threads post state via update(),
+drained by the Tk event loop (tkinter is not thread-safe to call directly).
+"""
 import tkinter as tk
 import threading
 import queue
@@ -18,11 +22,11 @@ GREY      = "#1a3a4a"
 STATUS_COLORS = {
     "STANDBY":    CYAN_MED,
     "LISTENING":  CYAN,
-    "ACTIVATED":  GREEN,
     "PROCESSING": ORANGE,
     "PERMISSION": RED,
     "SPEAKING":   GREEN,
     "ERROR":      RED,
+    "OFFLINE":    GREY,
 }
 
 W, H = 500, 620
@@ -198,11 +202,8 @@ class JarvisHUD:
             self._pulse_dir = -1
         elif self._pulse <= 0.0:
             self._pulse_dir = 1
-        alpha = int(0x44 + self._pulse * 0xBB)
-        ring_color = f"#{alpha:02x}d4ff" if alpha <= 0xFF else CYAN
-        # clamp hex
-        r_hex = min(255, int(0x44 + self._pulse * 0xBB))
-        ring_color = f"#{r_hex:02x}d4ff"
+        alpha = min(255, int(0x44 + self._pulse * 0xBB))
+        ring_color = f"#{alpha:02x}d4ff"
         c.itemconfig("reactor_ring", outline=ring_color)
 
         # Scanning line

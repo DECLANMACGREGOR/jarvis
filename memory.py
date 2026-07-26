@@ -1,3 +1,8 @@
+"""Persistent JSON memory: user facts, conversation summary, turn count.
+
+Atomic writes (dump to .tmp, then os.replace) and corrupt-file recovery keep
+it durable across crashes; tasks.py mirrors this exact storage model.
+"""
 import json
 import os
 from config import MEMORY_FILE

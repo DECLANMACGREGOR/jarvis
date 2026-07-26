@@ -1,3 +1,9 @@
+"""ElevenLabs TTS with sentence-chunked streaming playback.
+
+Sentences are fetched in a background thread while the previous one plays, so
+speech starts fast; holding PTT barges in and cancels the rest (see speak()'s
+return-value contract).
+"""
 import io
 import threading
 import queue

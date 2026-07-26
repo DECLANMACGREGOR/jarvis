@@ -1,3 +1,6 @@
+"""All settings in one place. Secrets and machine-specific values come from
+.env (gitignored) via python-dotenv; everything else is a plain constant here.
+"""
 import os
 from dotenv import load_dotenv
 
@@ -34,14 +37,15 @@ WHISPER_MODEL = "base"     # options: tiny, base, small, medium (larger = more a
 MEMORY_FILE = os.path.join(os.path.dirname(__file__), "memory", "jarvis_memory.json")
 SUMMARIZE_EVERY = 20       # auto-summarize conversation every N turns
 
-# Tasks — user-initiated reminders (a later step adds the scheduler that reads these)
+# Tasks — user-initiated reminders (read by the nudge scheduler, nudge.py)
 TASKS_FILE = os.path.join(os.path.dirname(__file__), "memory", "tasks.json")
 
-# Obsidian vault — tools are sandboxed to this directory only (see tools.py)
-VAULT_PATH = r"C:\Users\declan macgregor\Documents\DECLAN-MACGREGOR"
+# Obsidian vault — tools are sandboxed to this directory only (see tools.py).
+# Path lives in .env (machine-specific + personal); empty disables vault tools.
+VAULT_PATH = os.getenv("VAULT_PATH", "")
 
 # Morning briefing — weather location (Open-Meteo, no API key needed).
-# UPDATE on Aug 15: Stockholm is lat 59.3293, lon 18.0686, "Stockholm"
-BRIEFING_LAT = 40.7128
-BRIEFING_LON = -74.0060
-BRIEFING_PLACE = "New York, NY"
+# Coordinates live in .env (home location — not something to commit).
+BRIEFING_LAT = float(os.getenv("BRIEFING_LAT", "40.7128"))
+BRIEFING_LON = float(os.getenv("BRIEFING_LON", "-74.0060"))
+BRIEFING_PLACE = os.getenv("BRIEFING_PLACE", "New York, NY")

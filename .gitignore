@@ -1,5 +1,6 @@
 # Secrets — never commit
 .env
+credentials.json
 
 # Python
 __pycache__/
@@ -8,7 +9,8 @@ __pycache__/
 # Runtime state (personal data, changes constantly)
 memory/
 
+# Vision models — auto-downloaded on first use (see vision.py)
 models/
-memory/faces.json
-credentials.json
-memory/google_token.json
+
+# Scratch / one-off files not part of the project
+btc_predictions.html

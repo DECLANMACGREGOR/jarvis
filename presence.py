@@ -1,7 +1,7 @@
 """Presence heuristic — is the user "at the PC" right now?
 
-A later step adds a background nudge scheduler that must decide whether to
-deliver a reminder via TTS/HUD (user present) or Telegram (user away). The
+The nudge scheduler (nudge.py) uses this to decide whether to deliver a
+reminder via TTS/HUD (user present) or Telegram (user away). The
 committed heuristic is **last-PTT-interaction age**: the user is "present" if
 they used push-to-talk within the last PRESENCE_WINDOW_S seconds.
 

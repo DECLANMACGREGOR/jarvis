@@ -1,4 +1,4 @@
-"""jarvis_hud_v2_neural.py — Neural Constellation HUD, mockup.
+"""hud_v2_neural_mockup.py — Neural Constellation HUD, mockup.
 
 Standalone PyQt6 window. Cycles through IDLE -> THINKING -> EXECUTING ->
 SPEAKING -> IDLE automatically (with occasional MEMORY_WRITE bursts) so
@@ -35,7 +35,7 @@ DT_MS = 1000 // FPS
 # ── Palette ───────────────────────────────────────────────────────────
 BG        = QColor(4, 8, 18)
 CORE_CYAN = QColor(0, 210, 255)
-CORE_GREEN= QColor(80, 255, 180)
+CORE_GREEN = QColor(80, 255, 180)
 CORE_AMBER= QColor(255, 170, 60)
 TOOL_C    = QColor(60, 200, 240)
 TOOL_HOT  = QColor(220, 255, 255)

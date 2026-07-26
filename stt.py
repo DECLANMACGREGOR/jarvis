@@ -1,3 +1,4 @@
+"""Local speech-to-text via faster-whisper — CPU, int8, fully offline."""
 import numpy as np
 from faster_whisper import WhisperModel
 from config import WHISPER_MODEL
@@ -12,6 +13,11 @@ def _get_model() -> WhisperModel:
         _model = WhisperModel(WHISPER_MODEL, device="cpu", compute_type="int8")
         print("[JARVIS] Whisper ready.")
     return _model
+
+
+def warm_up() -> None:
+    """Load the model ahead of first use so the first turn isn't slow."""
+    _get_model()
 
 
 def transcribe(audio: np.ndarray) -> str:

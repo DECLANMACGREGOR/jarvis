@@ -1,3 +1,8 @@
+"""JARVIS entry point — the push-to-talk voice loop.
+
+Hold PTT → record → Whisper STT → brain.think() (Claude + tools) → ElevenLabs
+TTS. Also boots the HUD, the Telegram channel, and the nudge scheduler.
+"""
 import sys
 import os
 
@@ -44,14 +49,13 @@ def main():
         print(f"  Memory  : {mem['turn_count']} prior turns, {len(mem.get('user_facts', []))} saved facts")
     print(f"  Hold [{PTT_KEY.upper()}] to speak. Hold it mid-response to interrupt.\n")
 
-    # Start HUD window
     hud.start()
     hud.update(status="STANDBY", turn=mem.get("turn_count", 0))
     telegram_io.start()
     nudge.start()
 
     # Warm up Whisper before first use
-    stt._get_model()  # type: ignore[attr-defined]
+    stt.warm_up()
     hud.update(status="STANDBY")
 
     while True:

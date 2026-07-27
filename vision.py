@@ -14,6 +14,7 @@ One-shot camera capture + local face enrollment/recognition.
 import base64
 import json
 import os
+import threading
 import time
 import urllib.request
 
@@ -183,8 +184,64 @@ def identify_in_frame(frame: np.ndarray) -> list[dict]:
         results.append({
             "name": best_name if best_score >= MATCH_THRESHOLD else None,
             "score": round(best_score, 3) if faces_db else None,
+            "box": tuple(int(v) for v in row[:4]),  # x, y, w, h — for the preview
         })
     return results
+
+
+# ── Preview window — shows what was captured, still never touches disk ───────
+
+_PREVIEW_WINDOW = "JARVIS - what I see"
+_ACCENT = (255, 212, 0)  # BGR for the HUD's #00d4ff
+
+
+def _draw_annotations(frame: np.ndarray, results: list[dict]) -> np.ndarray:
+    """Label each detected face on a copy of the frame."""
+    img = frame.copy()
+    for r in results:
+        box = r.get("box")
+        if not box:
+            continue
+        x, y, w, h = box
+        text = r["name"] or "unrecognized"
+        if r["score"] is not None:
+            text += f"  {r['score']}"
+        cv2.rectangle(img, (x, y), (x + w, y + h), _ACCENT, 2)
+        cv2.putText(img, text, (x, max(18, y - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, _ACCENT, 2)
+    return img
+
+
+def show_preview(frame: np.ndarray, results: list[dict], seconds: float) -> None:
+    """Pop up the captured frame, labelled, in a window that closes itself.
+
+    This exists because a webcam can only have one owner: with a live camera
+    app open, JARVIS cannot read the device at all on most drivers. Showing
+    the frame it actually analysed gives the same "you can see it working"
+    view without a second app competing for the camera.
+
+    The window renders the in-memory frame — nothing is written to disk, same
+    as everywhere else here. It runs on its own thread so it stays up while
+    JARVIS speaks rather than delaying the reply, and any GUI failure is
+    logged and swallowed: a preview must never break a turn.
+    """
+    if seconds <= 0:
+        return
+    try:
+        img = _draw_annotations(frame, results)
+    except Exception as e:
+        print(f"[JARVIS] Preview annotation failed ({e}) — skipping preview.")
+        return
+
+    def _run() -> None:
+        try:
+            cv2.imshow(_PREVIEW_WINDOW, img)
+            cv2.waitKey(int(seconds * 1000))
+            cv2.destroyWindow(_PREVIEW_WINDOW)
+        except Exception as e:
+            print(f"[JARVIS] Preview window failed ({e}) — continuing.")
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def frame_to_b64_jpeg(frame: np.ndarray, max_width: int = 1024) -> str:

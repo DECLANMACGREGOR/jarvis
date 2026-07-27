@@ -44,6 +44,11 @@ TASKS_FILE = os.path.join(os.path.dirname(__file__), "memory", "tasks.json")
 # Path lives in .env (machine-specific + personal); empty disables vault tools.
 VAULT_PATH = os.getenv("VAULT_PATH", "")
 
+# Vision — after a capture, show the analysed frame (with recognition labels)
+# for this many seconds. A webcam only has one owner, so a live camera app and
+# JARVIS cannot both read it; this is how you see what it saw. 0 disables.
+CAMERA_PREVIEW_SECONDS = float(os.getenv("CAMERA_PREVIEW_SECONDS", "8"))
+
 # Morning briefing — weather location (Open-Meteo, no API key needed).
 # Coordinates live in .env (home location — not something to commit).
 BRIEFING_LAT = float(os.getenv("BRIEFING_LAT", "40.7128"))

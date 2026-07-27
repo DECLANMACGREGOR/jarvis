@@ -4,7 +4,9 @@ DSHOW is the fast path and MSMF is the shared-device rescue. What matters is
 that the rescue costs nothing when DSHOW works — a second backend attempt on
 every capture would add seconds to a spoken turn.
 """
+import numpy as np
 import cv2
+import pytest
 
 import vision
 
@@ -40,3 +42,29 @@ def test_both_backends_failing_returns_none(monkeypatch):
     # stay None rather than raising out of the tool call.
     monkeypatch.setattr(vision, "_capture_with_backend", lambda b, w: None)
     assert vision.capture_frame() is None
+
+
+# ── preview window ───────────────────────────────────────────────────────────
+
+def test_preview_disabled_opens_no_window(monkeypatch):
+    # CAMERA_PREVIEW_SECONDS=0 must be a true no-op, not a zero-length flash.
+    monkeypatch.setattr(cv2, "imshow", lambda *a: pytest.fail("window opened"))
+    vision.show_preview(np.zeros((4, 4, 3), np.uint8), [], 0)
+
+
+def test_annotation_never_mutates_the_captured_frame():
+    # The same frame object is JPEG-encoded and sent to Claude right after
+    # this runs — drawing boxes onto it would send Claude the marked-up copy.
+    frame = np.zeros((40, 40, 3), np.uint8)
+    out = vision._draw_annotations(frame, [{"name": "Declan", "score": 0.9, "box": (1, 1, 10, 10)}])
+    assert out.shape == frame.shape
+    assert frame.max() == 0, "original frame was drawn on"
+    assert out.max() > 0, "annotation was not drawn"
+
+
+def test_unrecognized_face_is_still_boxed():
+    # name=None must not crash the label path — it's the common case when
+    # someone unenrolled is on camera.
+    frame = np.zeros((40, 40, 3), np.uint8)
+    out = vision._draw_annotations(frame, [{"name": None, "score": None, "box": (1, 1, 10, 10)}])
+    assert out.max() > 0

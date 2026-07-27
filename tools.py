@@ -11,7 +11,7 @@ import sys
 import winreg
 from ddgs import DDGS
 import memory as mem_module
-from config import VAULT_PATH
+from config import VAULT_PATH, CAMERA_PREVIEW_SECONDS
 
 # Shared across every gated tool's schema. The user hears only this sentence
 # before approving, so it has to carry the whole decision: reading raw shell
@@ -463,6 +463,9 @@ def capture_camera() -> list | str:
     if frame is None:
         return "Camera capture failed — no webcam available or it's in use."
     people = vision.identify_in_frame(frame)
+    # Show the frame that was actually analysed — the camera can't be shared
+    # with a live camera app, so this is how the moment stays visible.
+    vision.show_preview(frame, people, CAMERA_PREVIEW_SECONDS)
     if people:
         parts = []
         for p in people:

@@ -42,7 +42,7 @@ flowchart TD
 - **Barge-in** — holding PTT while JARVIS speaks cuts the response off immediately and cancels the remaining TTS fetches.
 - **Dynamic model routing** — everyday turns run on a fast Claude model; requests that need heavy reasoning ("think hard", coding, analysis) auto-escalate to a stronger one. Prompt caching plus auto-summarization every 20 turns keep token usage flat over long sessions.
 - **Tools** — web search (DuckDuckGo), open apps/files, run Python/shell, persistent memory, Obsidian vault read/search/write, webcam capture with local face recognition, Google Calendar, Gmail read + draft, user-initiated task reminders, morning briefing (weather + calendar).
-- **Vision** — one-shot webcam capture (OpenCV) with YuNet + SFace face recognition, entirely on-CPU. Only 128-float embeddings are stored — never photos.
+- **Vision** — one-shot webcam capture (OpenCV) with YuNet + SFace face recognition, entirely on-CPU. Only 128-float embeddings are stored — never photos. The analysed frame is shown back with each match boxed and scored, since a webcam can only have one owner and a live camera app would lock JARVIS out of the device entirely.
 - **Second channel: Telegram** — text JARVIS from a phone; same brain, same tool gates, single-chat allowlist.
 - **Nudges** — a background scheduler reminds you about your tasks at 24h / 3h / overdue, routed to speakers if you're at the PC or Telegram if you're not.
 - **HUD** — a floating tkinter window with live status, the current exchange, and an animated arc reactor. (`hud_v2_neural_mockup.py` is a standalone PyQt6 design mockup for the next-generation HUD.)
@@ -103,7 +103,7 @@ Notes:
 1. **First run** downloads the Whisper model (~150 MB, one time); the two face-recognition ONNX models download on first camera use. If startup looks stalled, it's downloading.
 2. **Optional — Telegram**: create a bot with @BotFather, get your numeric user id from @userinfobot, add both to `.env`. Leave blank to run voice-only.
 3. **Optional — Google**: create an OAuth desktop client in Google Cloud Console with the Calendar + Gmail APIs enabled, save it as `credentials.json` in the project root, then run `C:\jv\Scripts\python google_tools.py` for a one-time browser consent and self-test.
-4. **Verify the install** (optional): `C:\jv\Scripts\pip install -r requirements-dev.txt`, then `C:\jv\Scripts\python -m pytest` — 30 tests should pass.
+4. **Verify the install** (optional): `C:\jv\Scripts\pip install -r requirements-dev.txt`, then `C:\jv\Scripts\python -m pytest` — 54 tests should pass.
 
 ## Usage
 

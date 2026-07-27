@@ -13,6 +13,18 @@ from ddgs import DDGS
 import memory as mem_module
 from config import VAULT_PATH
 
+# Shared across every gated tool's schema. The user hears only this sentence
+# before approving, so it has to carry the whole decision: reading raw shell
+# syntax aloud is worse than useless when the choice is "does this destroy
+# something of mine or not".
+SPOKEN_SUMMARY_DESC = (
+    "One sentence, plain English, read aloud to the user for approval before this runs. "
+    "Start with a verb and state the real-world effect on their machine or data, naming "
+    "what gets touched: 'permanently delete every file in your project folder'. Say so "
+    "explicitly when something is irreversible. No code, no command syntax, no file "
+    "extensions, no tool names — they are hearing this, not reading it."
+)
+
 TOOL_DEFINITIONS = [
     {
         "name": "web_search",
@@ -31,9 +43,10 @@ TOOL_DEFINITIONS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "target": {"type": "string", "description": "App name, file path, folder path, or URL to open"}
+                "target": {"type": "string", "description": "App name, file path, folder path, or URL to open"},
+                "spoken_summary": {"type": "string", "description": SPOKEN_SUMMARY_DESC},
             },
-            "required": ["target"],
+            "required": ["target", "spoken_summary"],
         },
     },
     {
@@ -44,8 +57,9 @@ TOOL_DEFINITIONS = [
             "properties": {
                 "code": {"type": "string", "description": "The code to execute"},
                 "lang": {"type": "string", "enum": ["python", "shell"], "description": "Language: 'python' or 'shell'"},
+                "spoken_summary": {"type": "string", "description": SPOKEN_SUMMARY_DESC},
             },
-            "required": ["code", "lang"],
+            "required": ["code", "lang", "spoken_summary"],
         },
     },
     {
@@ -116,8 +130,9 @@ TOOL_DEFINITIONS = [
                 "path": {"type": "string", "description": "Note path relative to the vault root, e.g. 'Goals/New Note.md'"},
                 "content": {"type": "string", "description": "Content to write"},
                 "mode": {"type": "string", "enum": ["overwrite", "append"], "description": "Whether to overwrite the file or append to it"},
+                "spoken_summary": {"type": "string", "description": SPOKEN_SUMMARY_DESC},
             },
-            "required": ["path", "content", "mode"],
+            "required": ["path", "content", "mode", "spoken_summary"],
         },
     },
     {
@@ -162,8 +177,9 @@ TOOL_DEFINITIONS = [
             "type": "object",
             "properties": {
                 "event_id": {"type": "string", "description": "The event id to delete"},
+                "spoken_summary": {"type": "string", "description": SPOKEN_SUMMARY_DESC},
             },
-            "required": ["event_id"],
+            "required": ["event_id", "spoken_summary"],
         },
     },
     {
@@ -501,6 +517,26 @@ def _matches(reply: str, phrases: tuple[str, ...]) -> bool:
     return False
 
 
+_MIN_SUMMARY_LEN = 12  # "delete it" (9) is not a description; "open notepad" (12) is
+
+
+def _spoken_request(tool_input: dict, literal: str) -> str:
+    """What the user actually hears before approving a high-impact action.
+
+    Claude writes spoken_summary in the same tool_use block, so a plain-English
+    request costs no extra API call: "I want to permanently delete every file
+    in your project folder" instead of eight seconds of shell syntax read
+    aloud. The user must never approve blind, so if the summary is missing or
+    too short to describe anything, fall back to `literal` — the old behaviour
+    of restating the raw code or path. Vague is never an option, only less
+    fluent.
+    """
+    summary = str(tool_input.get("spoken_summary", "")).strip().rstrip(".")
+    if len(summary) < _MIN_SUMMARY_LEN:
+        return literal
+    return f"I want to {summary[0].lower()}{summary[1:]}"
+
+
 def _confirm(spoken_desc: str, full_desc: str, channel: str = "voice") -> bool:
     """Request explicit permission for a high-impact action. Deny by default.
 
@@ -577,28 +613,32 @@ def _confirm_telegram(full_desc: str) -> bool:
 # permission gate below. The gated set (DANGEROUS_TOOLS) is the same on both.
 def dispatch(tool_name: str, tool_input: dict, channel: str = "voice") -> str:
     if tool_name in DANGEROUS_TOOLS:
+        # `literal` restates the raw action; `detail` is the exact technical
+        # record. Speech prefers Claude's plain-English summary, but the log
+        # and the Telegram message always carry `detail` verbatim.
         if tool_name == "run_code":
             lang = tool_input.get("lang", "python")
             code_preview = str(tool_input.get("code", ""))[:160]
-            # Speak the actual code, not just "a command" — the user must never
-            # approve blind. Collapse whitespace so TTS doesn't choke on newlines.
+            # Collapse whitespace so TTS doesn't choke on newlines.
             spoken_code = re.sub(r"\s+", " ", code_preview)[:80]
-            spoken = f"I want to run {lang} code that begins: {spoken_code}"
-            full = f"run_code[{lang}]: {code_preview}"
+            literal = f"I want to run {lang} code that begins: {spoken_code}"
+            detail = f"run_code[{lang}]: {code_preview}"
         elif tool_name == "write_vault_note":
             path = tool_input.get("path", "")
             mode = tool_input.get("mode", "overwrite")
             content_preview = str(tool_input.get("content", ""))[:160]
-            spoken = f"I want to {mode} the vault note {path}"
-            full = f"write_vault_note[{mode}] {path}: {content_preview}"
+            literal = f"I want to {mode} the vault note {path}"
+            detail = f"write_vault_note[{mode}] {path}: {content_preview}"
         elif tool_name == "delete_calendar_event":
             event_id = tool_input.get("event_id", "")
-            spoken = "I want to delete a calendar event"
-            full = f"delete_calendar_event: id={event_id}"
+            literal = "I want to delete a calendar event"
+            detail = f"delete_calendar_event: id={event_id}"
         else:
             target = tool_input.get("target", "")
-            spoken = f"I want to open {target}"
-            full = f"open_item: {target}"
+            literal = f"I want to open {target}"
+            detail = f"open_item: {target}"
+        spoken = _spoken_request(tool_input, literal)
+        full = f"{spoken}\n{detail}"
         if not _confirm(spoken, full, channel):
             return "User denied permission for this action. Do not retry unless the user asks again."
 

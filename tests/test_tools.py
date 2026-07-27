@@ -85,3 +85,73 @@ def test_unset_vault_path_disables_everything(monkeypatch):
     monkeypatch.setattr(tools, "VAULT_PATH", "")
     assert tools._vault_resolve("notes.md") is None
     assert "disabled" in tools.search_vault("anything")
+
+
+# ── _spoken_request: what the user hears before approving ────────────────────
+
+LITERAL = "I want to run shell code that begins: del /s /q C:\\project\\*"
+
+
+def test_summary_is_spoken_instead_of_raw_code():
+    spoken = tools._spoken_request(
+        {"spoken_summary": "Permanently delete every file in your project folder."},
+        LITERAL,
+    )
+    assert spoken == "I want to permanently delete every file in your project folder"
+
+
+@pytest.mark.parametrize("summary", ["", "   ", "delete it", "yes"])
+def test_missing_or_useless_summary_falls_back_to_the_literal_action(summary):
+    # The whole safety argument for this feature is that it can only ever be
+    # LESS fluent than the old code readback, never less informative. A model
+    # that omits the field or writes "delete it" must not downgrade the gate
+    # into "I want to run some code".
+    assert tools._spoken_request({"spoken_summary": summary}, LITERAL) == LITERAL
+
+
+def test_absent_field_entirely_falls_back():
+    assert tools._spoken_request({}, LITERAL) == LITERAL
+
+
+# ── dispatch: the gate still fires, and the log keeps the technical detail ───
+
+@pytest.fixture
+def denied_gate(monkeypatch):
+    """Capture what _confirm was asked, and deny — so nothing ever executes."""
+    seen = {}
+
+    def fake_confirm(spoken, full, channel="voice"):
+        seen["spoken"], seen["full"] = spoken, full
+        return False
+
+    monkeypatch.setattr(tools, "_confirm", fake_confirm)
+    return seen
+
+
+def test_run_code_speaks_english_but_logs_the_code(denied_gate):
+    result = tools.dispatch("run_code", {
+        "code": "import shutil; shutil.rmtree(r'C:\\project')",
+        "lang": "python",
+        "spoken_summary": "Permanently delete your project folder and everything in it.",
+    })
+    assert "denied" in result  # gate held: the code never ran
+    assert denied_gate["spoken"] == (
+        "I want to permanently delete your project folder and everything in it"
+    )
+    # The audit trail keeps the real code even though speech got friendlier.
+    assert "shutil.rmtree" in denied_gate["full"]
+    assert "run_code[python]" in denied_gate["full"]
+
+
+def test_every_dangerous_tool_still_passes_through_the_gate(monkeypatch):
+    # Deny-by-default must hold for all four, whatever the summary says.
+    calls = []
+    monkeypatch.setattr(tools, "_confirm", lambda s, f, c="voice": calls.append(f) or False)
+    for name, args in [
+        ("run_code", {"code": "x", "lang": "python"}),
+        ("open_item", {"target": "notepad"}),
+        ("write_vault_note", {"path": "a.md", "content": "c", "mode": "append"}),
+        ("delete_calendar_event", {"event_id": "abc123"}),
+    ]:
+        assert "denied" in tools.dispatch(name, {**args, "spoken_summary": "Do the thing to your files."})
+    assert len(calls) == 4

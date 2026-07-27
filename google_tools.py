@@ -136,18 +136,32 @@ def list_events(days_ahead: int = 7, max_results: int = 15) -> str:
         return f"Calendar error: {e}"
 
 
+def _to_rfc3339(iso_local: str) -> str:
+    """Stamp a naive local datetime with this machine's UTC offset.
+
+    Google accepts either an IANA zone name ("America/New_York") or a datetime
+    carrying an explicit offset. Windows reports its zone as "Eastern Daylight
+    Time", which is neither, so sending that name got the event placed wrong.
+    The offset needs no timezone database and is computed per-datetime, so it
+    stays correct across a DST boundary.
+    """
+    dt = datetime.fromisoformat(iso_local)
+    if dt.tzinfo is None:
+        dt = dt.astimezone()
+    return dt.isoformat()
+
+
 def create_event(summary: str, start_iso: str, end_iso: str, description: str = "",
                  location: str = "") -> str:
     """Create an event. start/end must be ISO 8601 local datetimes."""
     try:
         svc = _get_service("calendar", "v3")
-        tz = str(datetime.now().astimezone().tzinfo)
         body = {
             "summary": summary,
             "description": description,
             "location": location,
-            "start": {"dateTime": start_iso, "timeZone": tz},
-            "end": {"dateTime": end_iso, "timeZone": tz},
+            "start": {"dateTime": _to_rfc3339(start_iso)},
+            "end": {"dateTime": _to_rfc3339(end_iso)},
         }
         ev = svc.events().insert(calendarId="primary", body=body).execute()
         return f"Created event '{summary}' ({start_iso} to {end_iso}). id={ev['id']}"
